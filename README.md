@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="./icon.png">
-</p>
 
 <p align="center">
   <a href="https://www.gnu.org/licenses/gpl-3.0.html">
