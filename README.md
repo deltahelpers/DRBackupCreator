@@ -12,10 +12,12 @@
 </p>
 
 > [!WARNING]
-> **READ BEFORE DOWNLOADING, the only official repository/source for DRBackupCreator is "<https://github.com/deltahelpers/drbackupcreator>", another repository is not official. Also, the only official website is "<https://deltahelpers.github.io>. You are warned."**
+> **READ BEFORE DOWNLOADING, the only official repository/source for DRBackupCreator is "<https://github.com/deltahelpers/DRBackupCreator>", another repository is not official. Also, the only official website is "<https://deltahelpers.github.io>. You are warned."**
 
-# DRBackupCreator 
-_"An powerful and lightweight [DELTARUNE](https://deltarune.com) backup manager written on [C++](https://jmeubank.github.io/tdm-gcc/download/) using [Dear ImGUI](https://github.com/ocornut/imgui)"_
+# DRBackupCreator (drbc)
+"**D**_ELTA_**R**_UNE_ **B**_ackup_ **C**_reator_"
+
+An actually compatible, powerful, lightweight [DELTARUNE](https://deltarune.com) backup manager written on [C/C++](https://jmeubank.github.io/tdm-gcc/download/) with [Dear ImGUI](https://github.com/ocornut/imgui) as the GUI, [DRBackupCCore]("https://github.com/deltahelpers/DRBackupCCore") as an [shared library](https://www.geeksforgeeks.org/cpp/how-to-create-a-dynamic-library-in-cpp/) (.dll), that search your saves in %LOCALAPPDATA%\DELTARUNE, and backups it on %LOCALAPPDATA%\DRBackupCreator on a user-friendly GUI.
 
 <p align="right">
   <img src="./icon.png">
