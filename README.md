@@ -20,6 +20,10 @@
 # DRBackupCreator 
 _"An powerful and lightweight [DELTARUNE](https://deltarune.com) backup manager written on [C++](https://jmeubank.github.io/tdm-gcc/download/) using [Dear ImGUI](https://github.com/ocornut/imgui)"_
 
+<p align="right">
+  <img src="./icon.png">
+</p>
+
 ## How I install it?
 
 For installation, go to [the releases page,](https://github.com/deltahelpers/DRBackupCreator/releases/latest) download the appropiate file, and install it with our installer. It currently only support Windows, but theres an _work-in-progress_ [Linux](https://github.com/deltahelpers/DRBackupCreatorQt) version using the [Qt](https://www.qt.io) framework.
