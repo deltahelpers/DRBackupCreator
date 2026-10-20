@@ -17,7 +17,7 @@ jobs:
       - name: Install TDM-GCC
         shell: powershell
         run: |
-          choco install tdmgcc -y --no-progress
+          choco install tdm-gcc -y --no-progress
           $bin = @(
             "$env:ProgramFiles\TDM-GCC-64\bin",
             "$env:ProgramFiles(x86)\TDM-GCC-64\bin",
