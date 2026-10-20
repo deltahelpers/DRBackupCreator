@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install TDM-GCC
+        shell: powershell
+        run: |
+          choco install tdmgcc -y --no-progress
+          $bin = @(
+            "$env:ProgramFiles\TDM-GCC-64\bin",
+            "$env:ProgramFiles(x86)\TDM-GCC-64\bin",
+            "$env:ProgramFiles\TDM-GCC\bin",
+            "$env:ProgramFiles(x86)\TDM-GCC\bin"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $bin) { throw "TDM-GCC not found" }
+          echo "$bin" >> $env:GITHUB_PATH
+
+      - name: Build
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\build.ps1
