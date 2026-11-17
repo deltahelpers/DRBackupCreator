@@ -14,9 +14,13 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
+  <?ifndef Version?>
+  <?define Version = "1.0.0"?>
+  <?endif?>
+
   <Package Name="DRBackupCreator"
            Manufacturer="DeltaHelpers"
-           Version="1.0.0"
+           Version="$(var.Version)"
            UpgradeCode="5F1B2C7A-9D34-4C8E-B6A1-7E2D4C9F0B31"
            Language="1033"
            Scope="perUser"

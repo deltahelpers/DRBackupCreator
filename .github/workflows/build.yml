@@ -1,0 +1,158 @@
+name: build
+
+# Builds the Win32 app, runs the tests, produces the portable ZIP, the Inno
+# Setup installer and the WiX MSI. Pushing a v* tag also publishes a release
+# with the files attached under their stable asset names.
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version stamped into the installers (e.g. 2.0.0). Empty = read CMakeLists.txt"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  windows:
+    name: Build, test and package
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = ""
+
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            # v2.0.0 -> 2.0.0
+            $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          }
+          elseif ("${{ github.event.inputs.version }}") {
+            $version = "${{ github.event.inputs.version }}"
+          }
+          else {
+            $cmake = Get-Content CMakeLists.txt -Raw
+            $m = [regex]::Match($cmake, 'project\s*\(\s*DRBackupCreator\s+VERSION\s+([0-9]+(?:\.[0-9]+)*)')
+            if ($m.Success) { $version = $m.Groups[1].Value }
+          }
+
+          if (-not $version) { throw "Could not work out the version. Pass one to the workflow." }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
+      - name: Set up MinGW-w64 (MSYS2)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure
+        shell: msys2 {0}
+        # The version is quoted on purpose: PowerShell 5.1 splits an unquoted
+        # -DNAME=2.0.0 into "-DNAME=2" and ".0.0".
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DDRBC_RELEASE_VERSION=${{ steps.version.outputs.version }}"
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build
+
+      - name: Test
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Portable ZIP
+        shell: msys2 {0}
+        run: cpack --config build/CPackConfig.cmake -B dist
+
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Host "Inno Setup not found, installing it with Chocolatey..."
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+
+      - name: EXE installer (Inno Setup)
+        shell: pwsh
+        run: ./installer/build-installer.ps1 -NoBuild -Version ${{ steps.version.outputs.version }}
+
+      - name: MSI installer (WiX)
+        shell: pwsh
+        run: ./installer/build-msi.ps1 -NoBuild -Version ${{ steps.version.outputs.version }}
+
+      - name: Check that the binaries only use system DLLs
+        shell: pwsh
+        run: |
+          $gcc = "C:\msys64\ucrt64\bin"
+          $objdump = Join-Path $gcc "objdump.exe"
+          if (-not (Test-Path $objdump)) {
+            $objdump = (Get-ChildItem "C:\msys64" -Recurse -Filter objdump.exe -ErrorAction SilentlyContinue |
+                        Select-Object -First 1).FullName
+          }
+          if (-not $objdump) { Write-Host "objdump not found, skipping"; exit 0 }
+
+          $bad = @()
+          foreach ($f in @("build\bin\drbc.exe", "build\bin\DRBackupCCore.dll")) {
+            $imports = & $objdump -p $f | Select-String "DLL Name" | ForEach-Object { ($_.Line -split ':\s*')[1].Trim() }
+            Write-Host "$f -> $($imports -join ', ')"
+            $bad += $imports | Where-Object { $_ -match '^(libgcc|libstdc\+\+|libwinpthread)' }
+          }
+          if ($bad) { throw "MinGW runtime DLLs still linked: $($bad -join ', ')" }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: drbc-windows
+          path: |
+            dist/drbcWindowsInstaller.exe
+            dist/drbcWindowsInstaller.msi
+            dist/DRBackupCreator-*-win32.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish release
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: drbc-windows
+          path: dist
+
+      - name: Create or update the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: DRBackupCreator ${{ github.ref_name }}
+          files: |
+            dist/drbcWindowsInstaller.exe
+            dist/drbcWindowsInstaller.msi
+            dist/DRBackupCreator-*-win32.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true

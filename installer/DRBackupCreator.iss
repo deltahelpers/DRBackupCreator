@@ -1,14 +1,16 @@
 ; ---------------------------------------------------------------------------
 ; DRBackupCreator - Inno Setup script
 ;
-; Build the app first (build.ps1), then compile this script:
-;   iscc installer\DRBackupCreator.iss
+; Build the app first (build.ps1 or the CI workflow), then compile:
+;   iscc /DMyAppVersion=1.2.3 installer\DRBackupCreator.iss
 ;
-; Output: dist\DRBackupCreator-<version>-setup.exe
+; Output: dist\drbcWindowsInstaller.exe (stable asset name)
 ; ---------------------------------------------------------------------------
 
 #define MyAppName "DRBackupCreator"
-#define MyAppVersion "1.0.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "DeltaHelpers"
 #define MyAppURL "https://github.com/deltahelpers/DRBackupCreator"
 #define MyAppExeName "drbc.exe"

@@ -1,5 +1,6 @@
 param(
     [switch]$NoBuild,
+    [string]$Version,
     [string]$Iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 )
 
@@ -12,17 +13,25 @@ if (-not $NoBuild) {
     if ($LASTEXITCODE -ne 0) { throw "Build failed (exit code $LASTEXITCODE)" }
 }
 
+# Default to the version declared in CMakeLists.txt so local builds stay in sync.
+if (-not $Version) {
+    $cmake = Get-Content (Join-Path $root "CMakeLists.txt") -Raw
+    $m = [regex]::Match($cmake, 'project\s*\(\s*DRBackupCreator\s+VERSION\s+([0-9]+(?:\.[0-9]+)*)')
+    if (-not $m.Success) { throw "Could not read the project version from CMakeLists.txt; pass -Version." }
+    $Version = $m.Groups[1].Value
+}
+
 if (-not (Test-Path $Iscc)) {
     throw "ISCC.exe not found. Pass -Iscc <path to ISCC.exe> or install Inno Setup 6."
 }
 
 $iss = Join-Path $root "installer\DRBackupCreator.iss"
-& $Iscc $iss
+& $Iscc "/DMyAppVersion=$Version" $iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed (exit code $LASTEXITCODE)" }
 
 $setup = Get-ChildItem (Join-Path $root "dist") -Filter "drbcWindowsInstaller.exe" |
          Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($setup) {
     Write-Host ""
-    Write-Host ("Listo: " + $setup.FullName + " (" + [math]::Round($setup.Length / 1MB, 2) + " MB)")
+    Write-Host ("Listo: " + $setup.FullName + " (" + [math]::Round($setup.Length / 1MB, 2) + " MB, v" + $Version + ")")
 }

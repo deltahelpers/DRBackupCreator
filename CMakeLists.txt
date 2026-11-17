@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.20)
 
 project(DRBackupCreator VERSION 1.0.0 LANGUAGES CXX RC)
 
+# CI can stamp a release version without editing this file:
+#   cmake -B build -DDRBC_RELEASE_VERSION=2.0.0
+if(NOT "${DRBC_RELEASE_VERSION}" STREQUAL "")
+    set(PROJECT_VERSION "${DRBC_RELEASE_VERSION}")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -54,7 +60,12 @@ target_link_libraries(drbc PRIVATE
 )
 
 if(MINGW)
-    target_link_options(drbc PRIVATE -municode)
+    # Static MinGW runtime: MSYS2's GCC links libstdc++-6.dll, libgcc_s_seh-1.dll
+    # and libwinpthread-1.dll dynamically by default, which would leave the
+    # shipped binaries broken on a clean Windows install. TDM-GCC already links
+    # statically; -static keeps CI builds identical.
+    target_link_options(drbc PRIVATE -municode -static)
+    target_link_options(DRBackupCCore PRIVATE -static)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -69,6 +80,10 @@ target_compile_definitions(drbc_tests PRIVATE
 target_link_libraries(drbc_tests PRIVATE DRBackupCCore)
 
 add_test(NAME drbc_core COMMAND drbc_tests)
+
+if(MINGW)
+    target_link_options(drbc_tests PRIVATE -static)
+endif()
 
 # ---------------------------------------------------------------------------
 # Install / package (ready for the future installer)

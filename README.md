@@ -14,6 +14,9 @@
   <a href="https://jmeubank.github.io/tdm-gcc/">
     <img src="https://img.shields.io/badge/language-C%2B%2B20-00599C.svg?style=plastic&logo=cplusplus" alt="Language: C++20">
   </a>
+  <a href="https://github.com/deltahelpers/DRBackupCreator/actions/workflows/build.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/deltahelpers/DRBackupCreator/build.yml?style=plastic&label=build" alt="Build status">
+  </a>
 </p>
 
 > [!WARNING]
@@ -228,6 +231,23 @@ with `msiexec /x {product code}` removes the files and shortcuts and keeps your 
 > without a UAC prompt. When an account in the Administrators group runs it, Windows
 > Installer still writes the *uninstall entry* to `HKLM` while keeping the files in that
 > user's profile; uninstall works normally from Apps & Features.
+
+Both scripts accept `-Version` (they read `CMakeLists.txt` when it is omitted):
+
+```powershell
+.\installer\build-installer.ps1 -NoBuild -Version 1.0.1
+.\installer\build-msi.ps1       -NoBuild -Version 1.0.1
+```
+
+## 🤖 Continuous integration
+
+Every push to `master` and every pull request builds the app, runs the tests and produces
+the portable ZIP plus both installers as the `drbc-windows` artifact. Pushing a `v*` tag
+additionally publishes a release with the files attached under their stable names — so a
+version bump is just a tag.
+
+See [`docs/CI.md`](docs/CI.md) for the job layout, versioning rules, the static-runtime
+check and the steps to cut a release (including 2.0).
 
 ## 🩹 Notes about the original
 
