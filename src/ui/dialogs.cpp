@@ -868,6 +868,11 @@ LRESULT CALLBACK BackupsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
     case WM_NOTIFY: {
         if (!st) break;
+        {
+            LRESULT handled = 0;
+            if (HandleHeaderCustomDraw(st->list, lParam, &handled))
+                return handled;
+        }
         auto* header = reinterpret_cast<LPNMHDR>(lParam);
         if (header->idFrom != kIdBackupList) break;
 

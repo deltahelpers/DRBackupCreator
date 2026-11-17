@@ -682,6 +682,12 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             info->ptMaxTrackSize.y = GetSystemMetrics(SM_CYMAXTRACK);
         return 0;
     }
+    case WM_NOTIFY: {
+        LRESULT handled = 0;
+        if (HandleHeaderCustomDraw(st ? st->list : nullptr, lParam, &handled))
+            return handled;
+        break;
+    }
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT:

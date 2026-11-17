@@ -157,6 +157,78 @@ void ApplyDarkListView(HWND listView)
     if (header) SetWindowTheme(header, L"DarkMode_ItemsView", nullptr);
 }
 
+bool HandleHeaderCustomDraw(HWND listView, LPARAM lParam, LRESULT* result)
+{
+    if (!listView || !lParam || !result) return false;
+
+    auto* cd = reinterpret_cast<LPNMCUSTOMDRAW>(lParam);
+    if (cd->hdr.code != NM_CUSTOMDRAW) return false;
+
+    HWND header = ListView_GetHeader(listView);
+    if (!header || cd->hdr.hwndFrom != header) return false;
+
+    switch (cd->dwDrawStage) {
+    case CDDS_PREPAINT: {
+        // Paint the whole header band so any area past the last column stays dark.
+        FillRectC(cd->hdc, cd->rc, kPanel);
+
+        RECT line = cd->rc;
+        line.top = line.bottom - S(header, 1);
+        FillRectC(cd->hdc, line, kBorder);
+
+        *result = CDRF_NOTIFYITEMDRAW;
+        return true;
+    }
+    case CDDS_ITEMPREPAINT: {
+        const bool hot = (cd->uItemState & CDIS_HOT) != 0;
+        FillRectC(cd->hdc, cd->rc, hot ? kPanelAlt : kPanel);
+
+        RECT sep = cd->rc;
+        sep.left = sep.right - S(header, 1);
+        sep.top += S(header, 6);
+        sep.bottom -= S(header, 6);
+        FillRectC(cd->hdc, sep, kBorder);
+
+        wchar_t text[128] = {};
+        HDITEMW item{};
+        item.mask = HDI_TEXT | HDI_FORMAT;
+        item.pszText = text;
+        item.cchTextMax = static_cast<int>(sizeof(text) / sizeof(text[0]));
+
+        if (Header_GetItem(header, static_cast<int>(cd->dwItemSpec), &item)) {
+            UINT flags = DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS;
+            if (item.fmt & HDF_CENTER)      flags |= DT_CENTER;
+            else if (item.fmt & HDF_RIGHT)  flags |= DT_RIGHT;
+            else                            flags |= DT_LEFT;
+
+            RECT tr = cd->rc;
+            tr.left += S(header, 10);
+            tr.right -= S(header, 8);
+
+            HFONT font = reinterpret_cast<HFONT>(SendMessageW(header, WM_GETFONT, 0, 0));
+            if (!font)
+                font = reinterpret_cast<HFONT>(SendMessageW(listView, WM_GETFONT, 0, 0));
+
+            HGDIOBJ oldFont = font ? SelectObject(cd->hdc, font) : nullptr;
+            const int oldMode = SetBkMode(cd->hdc, TRANSPARENT);
+            const COLORREF oldColor = SetTextColor(cd->hdc, hot ? kText : kMuted);
+
+            DrawTextW(cd->hdc, text, -1, &tr, flags);
+
+            SetTextColor(cd->hdc, oldColor);
+            SetBkMode(cd->hdc, oldMode);
+            if (oldFont) SelectObject(cd->hdc, oldFont);
+        }
+
+        // Never let the system paint its own (light) hover state.
+        *result = CDRF_SKIPDEFAULT;
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 void ApplyDarkEdit(HWND edit)
 {
     if (!edit) return;

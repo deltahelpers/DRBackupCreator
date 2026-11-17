@@ -40,6 +40,11 @@ void ApplyDarkListView(HWND listView);
 void ApplyDarkEdit(HWND edit);
 void ApplyDarkTree(HWND hwnd);
 
+// Dark-custom-draws the header of a ListView. Call from WM_NOTIFY:
+//   LRESULT result;
+//   if (HandleHeaderCustomDraw(list, lParam, &result)) return result;
+bool HandleHeaderCustomDraw(HWND listView, LPARAM lParam, LRESULT* result);
+
 // ---------------------------------------------------------------------------
 // Fonts / painting
 // ---------------------------------------------------------------------------
