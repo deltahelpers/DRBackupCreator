@@ -74,7 +74,29 @@ jobs:
 
       - name: Build
         shell: msys2 {0}
-        run: cmake --build build
+        run: |
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log
+
+      - name: Report compile errors
+        if: failure()
+        shell: bash
+        run: |
+          # Job logs need a signed-in account, but annotations and the job
+          # summary are public: surface the compiler errors there.
+          if [ -f build.log ]; then
+            grep -iE 'error:|undefined reference|ld returned' build.log | head -n 40 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            {
+              echo "### Build errors"
+              echo '```'
+              grep -iE -A2 'error:|undefined reference|ld returned' build.log | head -n 80
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
 
       - name: Test
         shell: msys2 {0}

@@ -14,9 +14,6 @@
   <a href="https://jmeubank.github.io/tdm-gcc/">
     <img src="https://img.shields.io/badge/language-C%2B%2B20-00599C.svg?style=plastic&logo=cplusplus" alt="Language: C++20">
   </a>
-  <a href="https://github.com/deltahelpers/DRBackupCreator/actions/workflows/build.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/deltahelpers/DRBackupCreator/build.yml?style=plastic&label=build" alt="Build status">
-  </a>
 </p>
 
 > [!WARNING]
@@ -25,7 +22,7 @@
 # DRBackupCreator (drbc)
 "**D**_ELTA_**R**_UNE_ **B**_ackup_ **C**_reator_"
 
-An actually compatible, powerful, lightweight [DELTARUNE](https://deltarune.com) backup manager written in [C/C++](https://jmeubank.github.io/tdm-gcc/download/) with a native **Win32** GUI, backed by [DRBackupCCore](https://github.com/deltahelpers/DRBackupCCore) as a [shared library](https://en.wikipedia.org/wiki/Dynamic-link_library) (`.dll`). It finds your saves in `%LOCALAPPDATA%\DELTARUNE` and stores timestamped backups in `%LOCALAPPDATA%\DRBackupCreator`, all from a friendly, dark-themed window.
+An actually compatible, powerful, lightweight [DELTARUNE](https://deltarune.com) backup manager written in [C/C++](https://jmeubank.github.io/tdm-gcc/download/) with a native [Win32](https://learn.microsoft.com/en-us/windows/win32/api/) GUI, backed by [DRBackupCCore](https://github.com/deltahelpers/DRBackupCCore) as a [shared library](https://en.wikipedia.org/wiki/Dynamic-link_library) (`.dll/.so`). It finds your saves in `%LOCALAPPDATA%\DELTARUNE` and stores timestamped backups in `%LOCALAPPDATA%\DRBackupCreator`, all from a friendly, dark-themed window.
 
 <p align="right">
   <img src="./assets/icon.png" width="96" alt="DRBackupCreator icon">
@@ -48,7 +45,7 @@ An actually compatible, powerful, lightweight [DELTARUNE](https://deltarune.com)
 
 ## 📦 How do I install it?
 
-Grab the appropriate file from [the releases page](https://github.com/deltahelpers/DRBackupCreator/releases/latest) and run the installer. Windows only for now (a _work-in-progress_ [Linux](https://github.com/deltahelpers/DRBackupCreatorQt) version exists, built with [Qt](https://www.qt.io)).
+Grab the appropriate file from [the releases page](https://github.com/deltahelpers/DRBackupCreator/releases/latest) and run the installer. Windows only for now (a _work-in-progress_ [GNU/Linux](https://github.com/deltahelpers/DRBackupCreatorQt) version exists, built with [Qt](https://www.qt.io)).
 
 Or build it yourself — see below.
 
@@ -192,62 +189,18 @@ Covers slot parsing, grouping order, backup creation/listing/restore and helpers
 
 ## 📦 Packaging
 
-Install rules, CPack and two installers are included — an [Inno Setup](https://jrsoftware.org/isinfo.php)
-`.exe` and a [WiX](https://wixtoolset.org/) `.msi`:
+Install rules, CPack and an [Inno Setup](https://jrsoftware.org/isinfo.php) script are included:
 
 ```powershell
 cmake --install build --prefix dist        # raw files
 cpack --config build/CPackConfig.cmake     # portable ZIP
 
-.\installer\build-installer.ps1            # Inno -> dist\drbcWindowsInstaller.exe
-.\installer\build-msi.ps1                  # WiX  -> dist\drbcWindowsInstaller.msi
+.\installer\build-installer.ps1            # installer -> dist\DRBackupCreator-<version>-setup.exe
 ```
 
-Both installers keep a fixed file name so a release can publish them under the same
-asset names every time, which makes these links stable:
-
-```text
-https://github.com/deltahelpers/DRBackupCreator/releases/latest/download/drbcWindowsInstaller.exe
-https://github.com/deltahelpers/DRBackupCreator/releases/latest/download/drbcWindowsInstaller.msi
-```
-
-Both are **per-user**: they install to `%LOCALAPPDATA%\Programs\DRBackupCreator`, need no
-administrator rights, create Start Menu and desktop shortcuts, and leave
-`%LOCALAPPDATA%\DRBackupCreator` (backups and settings) untouched on uninstall.
-
-| | Inno `.exe` | WiX `.msi` |
-| --- | --- | --- |
-| Normal double-click | ✅ | ✅ |
-| Silent deploy | `/VERYSILENT` | `msiexec /i ... /qn` |
-| Enterprise tools (Intune, SCCM, GPO) | ⚠️ as a Win32 app | ✅ native |
-| Repair / modify | ❌ | ✅ |
-| Uninstall entry | per-user | per-user (see note) |
-
-The MSI is built with the WiX 6 CLI, which `build-msi.ps1` downloads into
-`%LOCALAPPDATA%\drbc-tools` on first use (no admin or SDK install required). Uninstalling
-with `msiexec /x {product code}` removes the files and shortcuts and keeps your backups.
-
-> **Note:** the MSI is packaged as "elevated privileges not required", so it installs
-> without a UAC prompt. When an account in the Administrators group runs it, Windows
-> Installer still writes the *uninstall entry* to `HKLM` while keeping the files in that
-> user's profile; uninstall works normally from Apps & Features.
-
-Both scripts accept `-Version` (they read `CMakeLists.txt` when it is omitted):
-
-```powershell
-.\installer\build-installer.ps1 -NoBuild -Version 1.0.1
-.\installer\build-msi.ps1       -NoBuild -Version 1.0.1
-```
-
-## 🤖 Continuous integration
-
-Every push to `master` and every pull request builds the app, runs the tests and produces
-the portable ZIP plus both installers as the `drbc-windows` artifact. Pushing a `v*` tag
-additionally publishes a release with the files attached under their stable names — so a
-version bump is just a tag.
-
-See [`docs/CI.md`](docs/CI.md) for the job layout, versioning rules, the static-runtime
-check and the steps to cut a release (including 2.0).
+The installer is per-user by default (installs to `%LOCALAPPDATA%\Programs\DRBackupCreator`),
+ships English and Spanish wizard languages, creates Start Menu/optional desktop icons,
+and leaves `%LOCALAPPDATA%\DRBackupCreator` (backups and settings) untouched on uninstall.
 
 ## 🩹 Notes about the original
 

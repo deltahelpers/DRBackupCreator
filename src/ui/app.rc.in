@@ -1,13 +1,13 @@
 #include <windows.h>
-#include "resource.h"
+#include "@DRBC_SRC_POSIX@/src/ui/resource.h"
 
-IDI_APP ICON "../../assets/app.ico"
+IDI_APP ICON "@DRBC_SRC_POSIX@/assets/app.ico"
 
-1 24 "app.manifest"
+1 24 "@DRBC_SRC_POSIX@/src/ui/app.manifest"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION @DRBC_RC_VERSION@
+ PRODUCTVERSION @DRBC_RC_VERSION@
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS VOS_NT_WINDOWS32
@@ -20,12 +20,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "DeltaHelpers"
             VALUE "FileDescription", "DRBackupCreator (Win32 GUI port)"
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileVersion", "@DRBC_RC_VERSION_STR@"
             VALUE "InternalName", "drbc"
             VALUE "LegalCopyright", "GPL-3.0 - Original project by DeltaHelpers"
             VALUE "OriginalFilename", "drbc.exe"
             VALUE "ProductName", "DRBackupCreator"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "ProductVersion", "@DRBC_RC_VERSION_STR@"
         END
     END
     BLOCK "VarFileInfo"

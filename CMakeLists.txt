@@ -6,7 +6,31 @@ project(DRBackupCreator VERSION 1.0.0 LANGUAGES CXX RC)
 #   cmake -B build -DDRBC_RELEASE_VERSION=2.0.0
 if(NOT "${DRBC_RELEASE_VERSION}" STREQUAL "")
     set(PROJECT_VERSION "${DRBC_RELEASE_VERSION}")
+    # project() is what normally fills the component variables; keep them in
+    # step with the override so the generated version header and .rc agree.
+    string(REPLACE "." ";" _drbc_ver "${PROJECT_VERSION}")
+    list(LENGTH _drbc_ver _drbc_ver_len)
+    list(GET _drbc_ver 0 PROJECT_VERSION_MAJOR)
+    set(PROJECT_VERSION_MINOR 0)
+    set(PROJECT_VERSION_PATCH 0)
+    if(_drbc_ver_len GREATER 1)
+        list(GET _drbc_ver 1 PROJECT_VERSION_MINOR)
+    endif()
+    if(_drbc_ver_len GREATER 2)
+        list(GET _drbc_ver 2 PROJECT_VERSION_PATCH)
+    endif()
+    unset(_drbc_ver)
+    unset(_drbc_ver_len)
 endif()
+
+# Generated version header + version resource, so the version baked into the
+# binaries always matches the ZIP and the installers.
+set(DRBC_RC_VERSION "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
+set(DRBC_RC_VERSION_STR "${PROJECT_VERSION}.0")
+set(DRBC_GEN_DIR "${CMAKE_BINARY_DIR}/generated")
+file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" DRBC_SRC_POSIX)
+configure_file(include/version.h.in "${DRBC_GEN_DIR}/version.h" @ONLY)
+configure_file(src/ui/app.rc.in "${DRBC_GEN_DIR}/app.rc" @ONLY)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,9 +65,11 @@ add_executable(drbc WIN32
     src/ui/dialogs.cpp
     src/ui/theme.cpp
     src/ui/i18n.cpp
-    src/ui/app.rc
+    ${DRBC_GEN_DIR}/app.rc
 )
 
+# BEFORE: the generated version.h must win over anything else on the path.
+target_include_directories(drbc BEFORE PRIVATE "${DRBC_GEN_DIR}")
 target_include_directories(drbc PRIVATE include src)
 target_compile_definitions(drbc PRIVATE
     UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS

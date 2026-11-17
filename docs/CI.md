@@ -64,6 +64,11 @@ as `-Version ...`, so the ZIP name, the `.exe` version resource and the MSI
 `ProductVersion` always agree. Locally the scripts read `CMakeLists.txt` when no version is
 given.
 
+The application's own version is generated too: `include/version.h.in` and
+`src/ui/app.rc.in` are configured into `build/generated/`, so `--version`, the About box,
+`v1.2.3` in the status bar and the `FILEVERSION`/`ProductVersion` resource all carry the
+same number as the ZIP and the installers. Nothing is hardcoded twice.
+
 ## Releasing
 
 ### A patch/minor release (e.g. 1.0.1)
@@ -142,6 +147,7 @@ CI uses Ninja. Both produce the same binaries.
 | Release job 403 | The `GITHUB_TOKEN` lacks write access. Org: *Settings → Actions → General → Workflow permissions* → **Read and write permissions**. |
 | Tag push does not release | Tag must match `v*` (e.g. `v2.0.0`). Branch pushes only build. |
 | Release asset missing | The build job failed before `Upload artifacts`, so `release` had nothing to download. |
+| Build failed but the log needs a GitHub login | Every failed build copies its compiler errors to the run's **Annotations** and **Summary** tab (see `Report compile errors`), which are public. |
 | ZIP named after the old version | CI overrides it with `-DDRBC_RELEASE_VERSION`; a local `cpack` uses `CMakeLists.txt`. |
 
 ## Notes
