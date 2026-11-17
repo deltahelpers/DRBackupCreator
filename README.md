@@ -189,25 +189,45 @@ Covers slot parsing, grouping order, backup creation/listing/restore and helpers
 
 ## 📦 Packaging
 
-Install rules, CPack and an [Inno Setup](https://jrsoftware.org/isinfo.php) script are included:
+Install rules, CPack and two installers are included — an [Inno Setup](https://jrsoftware.org/isinfo.php)
+`.exe` and a [WiX](https://wixtoolset.org/) `.msi`:
 
 ```powershell
 cmake --install build --prefix dist        # raw files
 cpack --config build/CPackConfig.cmake     # portable ZIP
 
-.\installer\build-installer.ps1            # installer -> dist\drbcWindowsInstaller.exe
+.\installer\build-installer.ps1            # Inno -> dist\drbcWindowsInstaller.exe
+.\installer\build-msi.ps1                  # WiX  -> dist\drbcWindowsInstaller.msi
 ```
 
-The installer keeps a fixed file name (`drbcWindowsInstaller.exe`) so a release can
-publish it under the same asset name every time, which makes this link stable:
+Both installers keep a fixed file name so a release can publish them under the same
+asset names every time, which makes these links stable:
 
 ```text
 https://github.com/deltahelpers/DRBackupCreator/releases/latest/download/drbcWindowsInstaller.exe
+https://github.com/deltahelpers/DRBackupCreator/releases/latest/download/drbcWindowsInstaller.msi
 ```
 
-The installer is per-user by default (installs to `%LOCALAPPDATA%\Programs\DRBackupCreator`),
-ships English and Spanish wizard languages, creates Start Menu/optional desktop icons,
-and leaves `%LOCALAPPDATA%\DRBackupCreator` (backups and settings) untouched on uninstall.
+Both are **per-user**: they install to `%LOCALAPPDATA%\Programs\DRBackupCreator`, need no
+administrator rights, create Start Menu and desktop shortcuts, and leave
+`%LOCALAPPDATA%\DRBackupCreator` (backups and settings) untouched on uninstall.
+
+| | Inno `.exe` | WiX `.msi` |
+| --- | --- | --- |
+| Normal double-click | ✅ | ✅ |
+| Silent deploy | `/VERYSILENT` | `msiexec /i ... /qn` |
+| Enterprise tools (Intune, SCCM, GPO) | ⚠️ as a Win32 app | ✅ native |
+| Repair / modify | ❌ | ✅ |
+| Uninstall entry | per-user | per-user (see note) |
+
+The MSI is built with the WiX 6 CLI, which `build-msi.ps1` downloads into
+`%LOCALAPPDATA%\drbc-tools` on first use (no admin or SDK install required). Uninstalling
+with `msiexec /x {product code}` removes the files and shortcuts and keeps your backups.
+
+> **Note:** the MSI is packaged as "elevated privileges not required", so it installs
+> without a UAC prompt. When an account in the Administrators group runs it, Windows
+> Installer still writes the *uninstall entry* to `HKLM` while keeping the files in that
+> user's profile; uninstall works normally from Apps & Features.
 
 ## 🩹 Notes about the original
 

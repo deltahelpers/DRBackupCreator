@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DRBackupCreator - per-user MSI.
+
+  Build (from the repository root, after build.ps1):
+    powershell -File installer\build-msi.ps1
+
+  Output: dist\drbcWindowsInstaller.msi
+
+  Per-user install: no elevation, files go to
+  %LOCALAPPDATA%\Programs\DRBackupCreator, shortcuts are created for the
+  current user only. Backups/settings in %LOCALAPPDATA%\DRBackupCreator are
+  never touched by install or uninstall.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package Name="DRBackupCreator"
+           Manufacturer="DeltaHelpers"
+           Version="1.0.0"
+           UpgradeCode="5F1B2C7A-9D34-4C8E-B6A1-7E2D4C9F0B31"
+           Language="1033"
+           Scope="perUser"
+           InstallerVersion="500"
+           Compressed="yes">
+
+    <SummaryInformation Description="DRBackupCreator - DELTARUNE backup manager"
+                        Manufacturer="DeltaHelpers" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DRBackupCreator is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      Scope="perUser" marks the package as "elevated privileges are not
+      required" (Summary Information WordCount bit 3). Do NOT author
+      ALLUSERS/MSIINSTALLPERUSER here: in a non-elevated package Windows
+      Installer ignores MSIINSTALLPERUSER ("not valid for UAC compliant
+      package") and ALLUSERS=2 would let an administrator resolve the install
+      to per-machine, which breaks the LocalAppData directory layout below.
+    -->
+    <Icon Id="AppIcon" SourceFile="$(var.Root)\assets\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPPUBLISHER" Value="DeltaHelpers" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="DRBackupCreator" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppShortcutFolder" Name="DRBackupCreator" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+
+      <Component Id="MainExecutable" Guid="A1B2C3D4-1111-4E5F-9A0B-1C2D3E4F5A61">
+        <File Id="drbcExe" Source="$(var.Root)\build\bin\drbc.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut"
+                    Directory="AppShortcutFolder"
+                    Name="DRBackupCreator"
+                    Description="DELTARUNE backup manager"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="AppIcon" />
+          <Shortcut Id="DesktopShortcut"
+                    Directory="DesktopFolder"
+                    Name="DRBackupCreator"
+                    Description="DELTARUNE backup manager"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="AppIcon" />
+        </File>
+      </Component>
+
+      <Component Id="CoreLibrary" Guid="A1B2C3D4-2222-4E5F-9A0B-1C2D3E4F5A62">
+        <File Id="coreDll" Source="$(var.Root)\build\bin\DRBackupCCore.dll" KeyPath="yes" />
+      </Component>
+
+      <Component Id="Documentation" Guid="A1B2C3D4-3333-4E5F-9A0B-1C2D3E4F5A63">
+        <File Id="readme" Source="$(var.Root)\README.md" KeyPath="yes" />
+        <File Id="license" Source="$(var.Root)\LICENSE" />
+      </Component>
+
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="DRBackupCreator" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+
+  </Package>
+
+</Wix>
