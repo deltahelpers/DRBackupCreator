@@ -189,14 +189,18 @@ Covers slot parsing, grouping order, backup creation/listing/restore and helpers
 
 ## 📦 Packaging
 
-Install rules and CPack are configured:
+Install rules, CPack and an [Inno Setup](https://jrsoftware.org/isinfo.php) script are included:
 
 ```powershell
-cmake --install build --prefix dist
+cmake --install build --prefix dist        # raw files
 cpack --config build/CPackConfig.cmake     # portable ZIP
+
+.\installer\build-installer.ps1            # installer -> dist\DRBackupCreator-<version>-setup.exe
 ```
 
-Meant as the base for an installer (e.g. Inno Setup / NSIS) shipping `drbc.exe` and `DRBackupCCore.dll`.
+The installer is per-user by default (installs to `%LOCALAPPDATA%\Programs\DRBackupCreator`),
+ships English and Spanish wizard languages, creates Start Menu/optional desktop icons,
+and leaves `%LOCALAPPDATA%\DRBackupCreator` (backups and settings) untouched on uninstall.
 
 ## 🩹 Notes about the original
 
