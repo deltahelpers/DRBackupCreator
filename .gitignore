@@ -1,0 +1,17 @@
+build/
+build-*/
+dist/
+bin/
+*.o
+*.obj
+*.dll
+*.exe
+*.dll.a
+*.a
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+CTestTestfile.cmake
+Testing/
