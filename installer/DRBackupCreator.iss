@@ -30,7 +30,8 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\dist
-OutputBaseFilename={#MyAppName}-{#MyAppVersion}-setup
+; Stable asset name so latest/download/drbcWindowsInstaller.exe never changes.
+OutputBaseFilename=drbcWindowsInstaller
 SetupIconFile=..\assets\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}

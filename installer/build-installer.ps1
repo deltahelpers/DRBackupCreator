@@ -20,7 +20,7 @@ $iss = Join-Path $root "installer\DRBackupCreator.iss"
 & $Iscc $iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed (exit code $LASTEXITCODE)" }
 
-$setup = Get-ChildItem (Join-Path $root "dist") -Filter "*-setup.exe" |
+$setup = Get-ChildItem (Join-Path $root "dist") -Filter "drbcWindowsInstaller.exe" |
          Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($setup) {
     Write-Host ""

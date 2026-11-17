@@ -195,7 +195,14 @@ Install rules, CPack and an [Inno Setup](https://jrsoftware.org/isinfo.php) scri
 cmake --install build --prefix dist        # raw files
 cpack --config build/CPackConfig.cmake     # portable ZIP
 
-.\installer\build-installer.ps1            # installer -> dist\DRBackupCreator-<version>-setup.exe
+.\installer\build-installer.ps1            # installer -> dist\drbcWindowsInstaller.exe
+```
+
+The installer keeps a fixed file name (`drbcWindowsInstaller.exe`) so a release can
+publish it under the same asset name every time, which makes this link stable:
+
+```text
+https://github.com/deltahelpers/DRBackupCreator/releases/latest/download/drbcWindowsInstaller.exe
 ```
 
 The installer is per-user by default (installs to `%LOCALAPPDATA%\Programs\DRBackupCreator`),
