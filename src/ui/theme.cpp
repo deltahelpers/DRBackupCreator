@@ -9,13 +9,44 @@
 
 namespace ui {
 
+// Defaults are applied by g_paletteInit below, then possibly replaced by a
+// .bctheme file before the first window exists.
+COLORREF kBg        = 0;
+COLORREF kBgDeep    = 0;
+COLORREF kPanel     = 0;
+COLORREF kPanelAlt  = 0;
+COLORREF kInput     = 0;
+COLORREF kBorder    = 0;
+COLORREF kBorderHot = 0;
+COLORREF kText      = 0;
+COLORREF kMuted     = 0;
+COLORREF kAccent    = 0;
+COLORREF kAccentHot = 0;
+COLORREF kSuccess   = 0;
+COLORREF kDanger    = 0;
+COLORREF kSel       = 0;
+COLORREF kWarnBg    = 0;
+COLORREF kWarnLine  = 0;
+
 namespace {
+
+cfg::Theme   g_theme;
+std::wstring g_fontFamily = L"Segoe UI";
+int          g_fontScale  = 100;
+
+HBRUSH g_bgBrush    = nullptr;
+HBRUSH g_inputBrush = nullptr;
+
+struct PaletteInit {
+    PaletteInit() { ApplyTheme(cfg::defaultTheme()); }
+} g_paletteInit;
 
 struct ButtonData {
     bool primary = false;
     bool danger  = false;
     bool hot     = false;
     bool pressed = false;
+    bool slidersIcon = false;
     COLORREF background = kBg;
     WNDPROC oldProc = nullptr;
 };
@@ -122,6 +153,52 @@ int DpiOf(HWND hwnd)
 int S(HWND hwnd, int value)
 {
     return MulDiv(value, DpiOf(hwnd), 96);
+}
+
+int MonitorDpi(HWND hwnd)
+{
+    using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+
+    static GetDpiForMonitorFn getForMonitor = []() -> GetDpiForMonitorFn {
+        HMODULE shcore = LoadLibraryW(L"shcore.dll");
+        if (!shcore) return nullptr;
+        return reinterpret_cast<GetDpiForMonitorFn>(
+            GetProcAddress(shcore, "GetDpiForMonitor"));
+    }();
+
+    // MDT_EFFECTIVE_DPI
+    if (getForMonitor) {
+        if (HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)) {
+            UINT x = 0;
+            UINT y = 0;
+            if (SUCCEEDED(getForMonitor(monitor, 0, &x, &y)) && x)
+                return static_cast<int>(x);
+        }
+    }
+
+    // Fall back to the system DPI.
+    HDC dc = GetDC(nullptr);
+    const int dpi = dc ? GetDeviceCaps(dc, LOGPIXELSX) : 96;
+    if (dc) ReleaseDC(nullptr, dc);
+    return dpi > 0 ? dpi : 96;
+}
+
+void AdjustWindowRectDpi(RECT& rc, DWORD style, BOOL menu, DWORD exStyle, int dpi)
+{
+    using AdjustFn = BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+
+    static AdjustFn adjustForDpi = []() -> AdjustFn {
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
+        if (!user32) return nullptr;
+        return reinterpret_cast<AdjustFn>(
+            GetProcAddress(user32, "AdjustWindowRectExForDpi"));
+    }();
+
+    if (adjustForDpi && adjustForDpi(&rc, style, menu, exStyle,
+                                     static_cast<UINT>(dpi)))
+        return;
+
+    AdjustWindowRectEx(&rc, style, menu, exStyle);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,25 +323,27 @@ void ApplyDarkTree(HWND hwnd)
 // ---------------------------------------------------------------------------
 HFONT MakeFont(int points, int weight, int dpi)
 {
+    const int scaled = MulDiv(points, g_fontScale, 100);
+
     LOGFONTW lf{};
-    lf.lfHeight  = -MulDiv(points, dpi, 72);
+    lf.lfHeight  = -MulDiv(scaled < 1 ? 1 : scaled, dpi, 72);
     lf.lfWeight  = weight;
     lf.lfCharSet = DEFAULT_CHARSET;
     lf.lfQuality = CLEARTYPE_QUALITY;
-    lstrcpynW(lf.lfFaceName, L"Segoe UI", LF_FACESIZE);
+    lstrcpynW(lf.lfFaceName, g_fontFamily.c_str(), LF_FACESIZE);
     return CreateFontIndirectW(&lf);
 }
 
 HBRUSH BgBrush()
 {
-    static HBRUSH brush = CreateSolidBrush(kBg);
-    return brush;
+    if (!g_bgBrush) g_bgBrush = CreateSolidBrush(kBg);
+    return g_bgBrush;
 }
 
 HBRUSH InputBrush()
 {
-    static HBRUSH brush = CreateSolidBrush(kInput);
-    return brush;
+    if (!g_inputBrush) g_inputBrush = CreateSolidBrush(kInput);
+    return g_inputBrush;
 }
 
 void FillRectC(HDC dc, const RECT& rc, COLORREF color)
@@ -335,7 +414,8 @@ void DrawTextCentered(HDC dc, const std::wstring& text, RECT rc, HFONT font,
 // ---------------------------------------------------------------------------
 // Owner-drawn buttons
 // ---------------------------------------------------------------------------
-void StyleButton(HWND button, bool primary, bool danger, COLORREF background)
+void StyleButton(HWND button, bool primary, bool danger, COLORREF background,
+                 bool slidersIcon)
 {
     if (!button) return;
 
@@ -347,10 +427,41 @@ void StyleButton(HWND button, bool primary, bool danger, COLORREF background)
     data->primary = primary;
     data->danger = danger;
     data->background = background;
+    data->slidersIcon = slidersIcon;
     SetWindowLongPtrW(button, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(data));
     data->oldProc = reinterpret_cast<WNDPROC>(
         SetWindowLongPtrW(button, GWLP_WNDPROC,
                           reinterpret_cast<LONG_PTR>(ButtonWndProc)));
+}
+
+static void DrawSlidersIcon(HDC dc, const RECT& rc, COLORREF color, int halfWidth)
+{
+    const int cx = (rc.left + rc.right) / 2;
+    const int cy = (rc.top + rc.bottom) / 2;
+    const int step = halfWidth * 2 / 5;
+    const int x0 = cx - halfWidth;
+    const int x1 = cx + halfWidth;
+    const int radius = halfWidth / 4;
+    const int knobs[3] = {1, 3, 2};
+
+    HPEN pen = CreatePen(PS_SOLID, 2, color);
+    HBRUSH brush = CreateSolidBrush(color);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    HGDIOBJ oldBrush = SelectObject(dc, brush);
+
+    for (int row = 0; row < 3; ++row) {
+        const int y = cy + (row - 1) * step;
+        MoveToEx(dc, x0, y, nullptr);
+        LineTo(dc, x1, y);
+
+        const int x = x0 + (x1 - x0) * knobs[row] / 5;
+        Ellipse(dc, x - radius, y - radius, x + radius + 1, y + radius + 1);
+    }
+
+    SelectObject(dc, oldPen);
+    SelectObject(dc, oldBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
 }
 
 void DrawOwnerButton(const DRAWITEMSTRUCT* dis)
@@ -400,8 +511,12 @@ void DrawOwnerButton(const DRAWITEMSTRUCT* dis)
     SetTextColor(dis->hDC, text);
 
     RECT textRc = rc;
-    DrawTextW(dis->hDC, buffer, -1, &textRc,
-              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    if (data->slidersIcon) {
+        DrawSlidersIcon(dis->hDC, rc, text, S(dis->hwndItem, 7));
+    } else {
+        DrawTextW(dis->hDC, buffer, -1, &textRc,
+                  DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    }
 
     if (oldFont) SelectObject(dis->hDC, oldFont);
 
@@ -538,6 +653,44 @@ std::wstring FormatText(const wchar_t* fmt, ...)
         return buffer;
     }
     return std::wstring(buffer, static_cast<size_t>(written));
+}
+
+// ---------------------------------------------------------------------------
+// Theme
+// ---------------------------------------------------------------------------
+void ApplyTheme(const cfg::Theme& theme)
+{
+    g_theme = theme;
+
+    kBg        = theme.bg;
+    kBgDeep    = theme.bgDeep;
+    kPanel     = theme.panel;
+    kPanelAlt  = theme.panelAlt;
+    kInput     = theme.input;
+    kBorder    = theme.border;
+    kBorderHot = theme.borderHot;
+    kText      = theme.text;
+    kMuted     = theme.muted;
+    kAccent    = theme.accent;
+    kAccentHot = theme.accentHot;
+    kSuccess   = theme.success;
+    kDanger    = theme.danger;
+    kSel       = theme.sel;
+    kWarnBg    = theme.warnBg;
+    kWarnLine  = theme.warnLine;
+
+    g_fontFamily = cfg::widen(theme.fontFamily);
+    if (g_fontFamily.empty()) g_fontFamily = L"Segoe UI";
+    g_fontScale = theme.fontScale < 50 ? 50 : (theme.fontScale > 200 ? 200 : theme.fontScale);
+
+    // Cached brushes hold the old colours.
+    if (g_bgBrush) { DeleteObject(g_bgBrush); g_bgBrush = nullptr; }
+    if (g_inputBrush) { DeleteObject(g_inputBrush); g_inputBrush = nullptr; }
+}
+
+const cfg::Theme& CurrentTheme()
+{
+    return g_theme;
 }
 
 } // namespace ui

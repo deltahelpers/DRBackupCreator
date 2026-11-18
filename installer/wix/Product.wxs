@@ -15,7 +15,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <?ifndef Version?>
-  <?define Version = "1.0.0"?>
+  <?define Version = "2.0.0"?>
   <?endif?>
 
   <Package Name="DRBackupCreator"
@@ -76,6 +76,27 @@
                     WorkingDirectory="INSTALLFOLDER"
                     Icon="AppIcon" />
         </File>
+
+        <!--
+          Document types. The package is per-user, so these land in
+          HKCU\Software\Classes; Windows asks once before making them the
+          default handler, and uninstalling removes the keys again.
+        -->
+        <ProgId Id="DRBackupCreator.Theme"
+                Description="DRBackupCreator theme"
+                Icon="AppIcon">
+          <Extension Id="bctheme" ContentType="text/plain">
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+          </Extension>
+        </ProgId>
+
+        <ProgId Id="DRBackupCreator.Config"
+                Description="DRBackupCreator configuration"
+                Icon="AppIcon">
+          <Extension Id="bcconfig" ContentType="text/plain">
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+          </Extension>
+        </ProgId>
       </Component>
 
       <Component Id="CoreLibrary" Guid="A1B2C3D4-2222-4E5F-9A0B-1C2D3E4F5A62">

@@ -81,6 +81,34 @@ struct Strings {
     const wchar_t* no;
     const wchar_t* cancel;
     const wchar_t* statusSlots;    // %d
+
+    // Settings dialog
+    const wchar_t* settingsTitle;
+    const wchar_t* settingsSubtitle;
+    const wchar_t* scheduleSection;
+    const wchar_t* schedulePrompt;
+    const wchar_t* scheduleOn;       // %s
+    const wchar_t* scheduleOff;
+    const wchar_t* btnScheduleSave;
+    const wchar_t* btnScheduleOff;
+    const wchar_t* themeSection;
+    const wchar_t* themeCurrent;     // %s
+    const wchar_t* btnThemeLoad;
+    const wchar_t* btnThemeSave;
+    const wchar_t* btnThemeReset;
+    const wchar_t* configSection;
+    const wchar_t* btnConfigImport;
+    const wchar_t* btnConfigExport;
+    const wchar_t* restartHint;
+    const wchar_t* themeSaved;
+    const wchar_t* themeResetDone;
+    const wchar_t* configImported;
+    const wchar_t* settingsSaved;
+    const wchar_t* filterTheme;
+    const wchar_t* filterConfig;
+    const wchar_t* filterAll;
+    const wchar_t* scheduleError;    // %s
+    const wchar_t* themeError;       // %s
 };
 
 Lang GetLang();

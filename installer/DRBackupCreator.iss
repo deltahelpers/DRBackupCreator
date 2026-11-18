@@ -9,7 +9,7 @@
 
 #define MyAppName "DRBackupCreator"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "2.0.0"
 #endif
 #define MyAppPublisher "DeltaHelpers"
 #define MyAppURL "https://github.com/deltahelpers/DRBackupCreator"
@@ -45,7 +45,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 CloseApplications=yes
 RestartApplications=no
-ChangesAssociations=no
+ChangesAssociations=yes
 ChangesEnvironment=no
 AllowNoIcons=yes
 VersionInfoVersion={#MyAppVersion}
@@ -70,6 +70,30 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+; ---------------------------------------------------------------------------
+; File associations for the two document types.
+;
+; HKA maps to HKCU for this per-user installer, so no administrator rights are
+; needed and nothing is written to HKLM. Windows 10/11 still asks the user to
+; confirm the default handler the first time one of these files is opened;
+; after that double-clicking a .bctheme or .bcconfig opens DRBackupCreator.
+; ---------------------------------------------------------------------------
+[Registry]
+Root: HKA; Subkey: "Software\Classes\.bctheme"; ValueType: string; ValueName: ""; ValueData: "DRBackupCreator.Theme"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\DRBackupCreator.Theme"; ValueType: string; ValueName: ""; ValueData: "DRBackupCreator theme"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\DRBackupCreator.Theme\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\DRBackupCreator.Theme\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey
+
+Root: HKA; Subkey: "Software\Classes\.bcconfig"; ValueType: string; ValueName: ""; ValueData: "DRBackupCreator.Config"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\DRBackupCreator.Config"; ValueType: string; ValueName: ""; ValueData: "DRBackupCreator configuration"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\DRBackupCreator.Config\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\DRBackupCreator.Config\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey
+
+; Offer both types in the "Open with" menu even before the user picks a default.
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\SupportedTypes"; ValueType: string; ValueName: ".bctheme"; ValueData: ""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\SupportedTypes"; ValueType: string; ValueName: ".bcconfig"; ValueData: ""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey
 
 ; User data (backups and settings in %LOCALAPPDATA%\DRBackupCreator) is
 ; intentionally left untouched on uninstall.

@@ -94,13 +94,43 @@ Output lands in `build\bin`:
 
 ```text
 drbc.exe                          Opens the GUI
+drbc.exe <file.bctheme|.bcconfig> Applies that file (also on double-click)
 drbc.exe --cli                    Interactive CLI
 drbc.exe --cli list               Lists detected slots
 drbc.exe --cli backup             Creates a backup
 drbc.exe --cli restore <index>    Restores a backup
+drbc.exe --theme <file.bctheme>   Loads and remembers a theme
+drbc.exe --config <file.bcconfig> Imports a configuration
+drbc.exe --export-config <file>   Saves the current settings
+drbc.exe --schedule 21:30         Backs up every day at that time
+drbc.exe --schedule off           Turns the daily backup off
+drbc.exe --auto-backup            Silent backup (used by the schedule)
 drbc.exe --help                   Help
 drbc.exe --version                Version
 ```
+
+### ⏰ Daily backup
+
+**Settings → Daily backup** (sliders button in the header) creates a Windows
+Task Scheduler job called `DRBackupCreator Auto Backup`. It runs
+`drbc.exe --auto-backup` once a day and needs no administrator rights. The app
+can be closed; the backup runs while your Windows session is signed in.
+
+Every run appends one line to `%LOCALAPPDATA%\DRBackupCreator\scheduled.log`:
+
+```text
+2026-11-18 21:30:02 ok - backup_2026-11-18_21-30-02 (5 slots)
+2026-11-19 21:30:01 skipped - DELTARUNE is running
+```
+
+### 🎨 Themes and configuration
+
+`.bctheme` files change colours, fonts and window size; `.bcconfig` files carry
+language, theme, backup folder and schedule. Both are plain text — see
+[docs/FORMATS.md](docs/FORMATS.md) for every key, examples and common errors.
+
+Both installers register the two extensions, so a `.bctheme` opens in
+DRBackupCreator after the first "Open with" confirmation.
 
 ### ⌨️ GUI shortcuts
 
@@ -124,6 +154,10 @@ drbc.exe --version                Version
     ...
 ```
 
+The folder can be changed with `backup_dir` in settings.ini or a `.bcconfig`
+(environment variables such as `%USERPROFILE%` are expanded). Settings, themes
+and logs always stay in `%LOCALAPPDATA%\DRBackupCreator`.
+
 `listAllBackups()` also detects legacy backups created directly in `%LOCALAPPDATA%\backup_*` by the original CLI.
 
 ## 🧱 Project structure
@@ -137,17 +171,24 @@ src/
   paths.cpp           %LOCALAPPDATA%, DELTARUNE and backup paths
   slots.cpp           slot parsing and grouping
   process.cpp         DELTARUNE.exe detection
-  main.cpp            entry point (GUI / CLI / help)
+  config.cpp/.h       .bctheme / .bcconfig reader and writer
+  schedule.cpp/.h     Windows Task Scheduler (daily backup)
+  settings.cpp/.h     settings.ini, theme loading, config import/export
+  main.cpp            entry point (GUI / CLI / help / settings commands)
   cli.cpp             interactive and subcommand CLI
   ui/
     gui.cpp           main window, layout, shortcuts
-    dialogs.cpp       backups, confirm, language and about dialogs
-    theme.cpp/.h      dark painting, owner-draw buttons, DPI
+    dialogs.cpp       backups, confirm, language, about and settings dialogs
+    theme.cpp/.h      dark painting, owner-draw buttons, DPI, theme palette
     i18n.cpp/.h       ES/EN strings and language persistence
     app.rc            icon and version resource
     app.manifest      Common Controls v6, DPI, UTF-8
 tests/
   core_tests.cpp      core test suite (no GUI)
+  config_tests.cpp    .bctheme / .bcconfig parser tests
+docs/
+  FORMATS.md          theme and configuration reference
+  CI.md               build and release pipeline
 assets/
   app.ico, icon.png   multi-resolution icon
 ```
@@ -159,6 +200,7 @@ assets/
 ```cpp
 std::optional<fs::path> getLocalAppData();
 std::optional<fs::path> getDeltaruneDir(bool createIfMissing = false);
+std::optional<fs::path> getSettingsDir(bool createIfMissing = false);
 std::optional<fs::path> getBackupDir(bool createIfMissing = false);
 
 std::optional<SlotFile> parseSlotFile(const fs::path& p);
@@ -185,21 +227,22 @@ std::string getCurrentTimestamp();
 ctest --test-dir build --output-on-failure
 ```
 
-Covers slot parsing, grouping order, backup creation/listing/restore and helpers, using temporary directories.
+Covers slot parsing, grouping order, backup creation/listing/restore and helpers, using temporary directories. `drbc_config_tests` covers the `.bctheme`/`.bcconfig` parser, colour and time parsing, and the theme/config round trip.
 
 ## 📦 Packaging
 
-Install rules, CPack and an [Inno Setup](https://jrsoftware.org/isinfo.php) script are included:
+Install rules, CPack, an [Inno Setup](https://jrsoftware.org/isinfo.php) script and a WiX MSI are included:
 
 ```powershell
 cmake --install build --prefix dist        # raw files
 cpack --config build/CPackConfig.cmake     # portable ZIP
 
-.\installer\build-installer.ps1            # installer -> dist\DRBackupCreator-<version>-setup.exe
+.\installer\build-installer.ps1            # installer -> dist\drbcWindowsInstaller.exe
 ```
 
 The installer is per-user by default (installs to `%LOCALAPPDATA%\Programs\DRBackupCreator`),
 ships English and Spanish wizard languages, creates Start Menu/optional desktop icons,
+registers the `.bctheme` and `.bcconfig` file associations under `HKCU`,
 and leaves `%LOCALAPPDATA%\DRBackupCreator` (backups and settings) untouched on uninstall.
 
 ## 🩹 Notes about the original

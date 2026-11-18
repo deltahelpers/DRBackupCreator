@@ -84,6 +84,33 @@ const Strings kSpanish = {
     /* no             */ L"No",
     /* cancel         */ L"Cancelar",
     /* statusSlots    */ L"%d slots",
+
+    /* settingsTitle   */ L"Ajustes",
+    /* settingsSubtitle*/ L"Backup automático, tema y configuración",
+    /* scheduleSection */ L"Backup automático",
+    /* schedulePrompt  */ L"Crea un backup todos los días a las:",
+    /* scheduleOn      */ L"Programado todos los días a las %s.",
+    /* scheduleOff     */ L"Sin programar.",
+    /* btnScheduleSave */ L"Guardar hora",
+    /* btnScheduleOff  */ L"Desactivar",
+    /* themeSection    */ L"Tema",
+    /* themeCurrent    */ L"Tema actual: %s",
+    /* btnThemeLoad    */ L"Cargar…",
+    /* btnThemeSave    */ L"Guardar como…",
+    /* btnThemeReset   */ L"Predeterminado",
+    /* configSection   */ L"Configuración",
+    /* btnConfigImport */ L"Importar…",
+    /* btnConfigExport */ L"Exportar…",
+    /* restartHint     */ L"El tamaño de la ventana se aplica al reiniciar.",
+    /* themeSaved      */ L"Tema aplicado.",
+    /* themeResetDone  */ L"Tema predeterminado restaurado.",
+    /* configImported  */ L"Configuración importada.",
+    /* settingsSaved   */ L"Hora guardada.",
+    /* filterTheme     */ L"Temas de DRBackupCreator",
+    /* filterConfig    */ L"Configuraciones de DRBackupCreator",
+    /* filterAll       */ L"Todos los archivos",
+    /* scheduleError   */ L"No se pudo programar: %s",
+    /* themeError      */ L"No se pudo cargar el tema: %s",
 };
 
 const Strings kEnglish = {
@@ -161,6 +188,33 @@ const Strings kEnglish = {
     /* no             */ L"No",
     /* cancel         */ L"Cancel",
     /* statusSlots    */ L"%d slots",
+
+    /* settingsTitle   */ L"Settings",
+    /* settingsSubtitle*/ L"Scheduled backup, theme and configuration",
+    /* scheduleSection */ L"Daily backup",
+    /* schedulePrompt  */ L"Create a backup every day at:",
+    /* scheduleOn      */ L"Scheduled every day at %s.",
+    /* scheduleOff     */ L"Not scheduled.",
+    /* btnScheduleSave */ L"Save time",
+    /* btnScheduleOff  */ L"Turn off",
+    /* themeSection    */ L"Theme",
+    /* themeCurrent    */ L"Current theme: %s",
+    /* btnThemeLoad    */ L"Load…",
+    /* btnThemeSave    */ L"Save as…",
+    /* btnThemeReset   */ L"Default",
+    /* configSection   */ L"Configuration",
+    /* btnConfigImport */ L"Import…",
+    /* btnConfigExport */ L"Export…",
+    /* restartHint     */ L"The window size is applied when the app restarts.",
+    /* themeSaved      */ L"Theme applied.",
+    /* themeResetDone  */ L"Default theme restored.",
+    /* configImported  */ L"Configuration imported.",
+    /* settingsSaved   */ L"Time saved.",
+    /* filterTheme     */ L"DRBackupCreator themes",
+    /* filterConfig    */ L"DRBackupCreator configurations",
+    /* filterAll       */ L"All files",
+    /* scheduleError   */ L"Could not schedule: %s",
+    /* themeError      */ L"Could not load the theme: %s",
 };
 
 } // namespace
@@ -182,7 +236,7 @@ const Strings& T()
 
 std::wstring SettingsPath()
 {
-    auto dir = getBackupDir(true);
+    auto dir = getSettingsDir(true);
     if (!dir) return {};
     return (dir->wstring() + L"\\settings.ini");
 }

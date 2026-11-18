@@ -1,11 +1,15 @@
 #include "dialogs.h"
 
+#include "config.h"
+#include "schedule.h"
+#include "settings.h"
 #include "theme.h"
 #include "resource.h"
 #include "version.h"
 #include "drbackup.h"
 
 #include <commctrl.h>
+#include <commdlg.h>
 #include <shellapi.h>
 
 #include <cwchar>
@@ -32,10 +36,21 @@ constexpr int kIdBackupOpen    = 3303;
 constexpr int kIdBackupDelete  = 3304;
 constexpr int kIdBackupClose   = 3305;
 
+constexpr int kIdSetTimeEdit    = 3401;
+constexpr int kIdSetSaveTime    = 3402;
+constexpr int kIdSetOff         = 3403;
+constexpr int kIdSetThemeLoad   = 3404;
+constexpr int kIdSetThemeSave   = 3405;
+constexpr int kIdSetThemeDefault = 3406;
+constexpr int kIdSetImport      = 3407;
+constexpr int kIdSetExport      = 3408;
+constexpr int kIdSetClose       = 3409;
+
 const wchar_t* kConfirmClass = L"DRBC_Confirm";
 const wchar_t* kLanguageClass = L"DRBC_Language";
 const wchar_t* kAboutClass = L"DRBC_About";
 const wchar_t* kBackupsClass = L"DRBC_Backups";
+const wchar_t* kSettingsClass = L"DRBC_Settings";
 
 // ---------------------------------------------------------------------------
 // Window plumbing
@@ -69,11 +84,12 @@ HWND CreateAppWindow(const wchar_t* className,
                                 owner, nullptr, instance, state);
     if (!hwnd) return nullptr;
 
-    // The window's own DPI is only reliable once it exists, so the final size
-    // is computed here instead of with the owner's DPI.
-    const int dpi = DpiOf(hwnd);
+    // The window's own DPI is only reliable once it exists, and a freshly
+    // created hidden window often still reports 96. Dialogs are centred on the
+    // owner, so use the owner's monitor DPI when there is one.
+    const int dpi = MonitorDpi(owner ? owner : hwnd);
     RECT rc{0, 0, MulDiv(dipWidth, dpi, 96), MulDiv(dipHeight, dpi, 96)};
-    AdjustWindowRectEx(&rc, style, FALSE, exStyle);
+    AdjustWindowRectDpi(rc, style, FALSE, exStyle, dpi);
     SetWindowPos(hwnd, nullptr, 0, 0, rc.right - rc.left, rc.bottom - rc.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
@@ -377,6 +393,417 @@ LRESULT CALLBACK LanguageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
         }
         return 0;
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_NCDESTROY:
+        if (st) {
+            if (st->font) DeleteObject(st->font);
+            if (st->fontTitle) DeleteObject(st->fontTitle);
+            if (st->fontSmall) DeleteObject(st->fontSmall);
+            st->font = st->fontTitle = st->fontSmall = nullptr;
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        }
+        return 0;
+    default:
+        break;
+    }
+
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+// ---------------------------------------------------------------------------
+// Settings dialog (schedule, theme, config)
+// ---------------------------------------------------------------------------
+struct SettingsState {
+    HWND hwnd = nullptr;
+    HWND timeEdit = nullptr;
+    HWND saveTime = nullptr;
+    HWND off = nullptr;
+    HWND themeLoad = nullptr;
+    HWND themeSave = nullptr;
+    HWND themeDefault = nullptr;
+    HWND importConfig = nullptr;
+    HWND exportConfig = nullptr;
+    HWND close = nullptr;
+
+    HFONT font = nullptr;
+    HFONT fontTitle = nullptr;
+    HFONT fontSmall = nullptr;
+
+    std::wstring status;
+    COLORREF statusColor = kMuted;
+    std::function<void()> onApplied;
+};
+
+void SetSettingsStatus(SettingsState* st, const std::wstring& text, COLORREF color)
+{
+    st->status = text;
+    st->statusColor = color;
+    if (st->hwnd) InvalidateRect(st->hwnd, nullptr, FALSE);
+}
+
+void RebuildSettingsFonts(SettingsState* st)
+{
+    if (st->font) { DeleteObject(st->font); st->font = nullptr; }
+    if (st->fontTitle) { DeleteObject(st->fontTitle); st->fontTitle = nullptr; }
+    if (st->fontSmall) { DeleteObject(st->fontSmall); st->fontSmall = nullptr; }
+
+    const int dpi = DpiOf(st->hwnd);
+    st->font      = MakeFont(10, FW_NORMAL, dpi);
+    st->fontTitle = MakeFont(15, FW_SEMIBOLD, dpi);
+    st->fontSmall = MakeFont(9, FW_NORMAL, dpi);
+
+    HWND controls[] = {st->timeEdit, st->saveTime, st->off, st->themeLoad,
+                       st->themeSave, st->themeDefault, st->importConfig,
+                       st->exportConfig, st->close};
+    for (HWND control : controls) {
+        if (control) SendMessageW(control, WM_SETFONT,
+                                  reinterpret_cast<WPARAM>(st->font), TRUE);
+    }
+}
+
+void LayoutSettings(SettingsState* st)
+{
+    RECT rc{};
+    GetClientRect(st->hwnd, &rc);
+
+    const int m   = S(st->hwnd, 24);
+    const int bh  = S(st->hwnd, 34);
+    const int gap = S(st->hwnd, 10);
+
+    const int editWidth  = S(st->hwnd, 92);
+    const int wideButton = S(st->hwnd, 136);
+
+    // Row 1: time + save + turn off.
+    const int row1 = S(st->hwnd, 144);
+    MoveWindow(st->timeEdit, m, row1, editWidth, bh, TRUE);
+    MoveWindow(st->saveTime, m + editWidth + gap, row1, wideButton, bh, TRUE);
+    MoveWindow(st->off, m + editWidth + gap * 2 + wideButton, row1, wideButton, bh, TRUE);
+
+    // Row 2: theme buttons.
+    const int row2 = S(st->hwnd, 258);
+    const int themeButton = S(st->hwnd, 132);
+    MoveWindow(st->themeLoad, m, row2, themeButton, bh, TRUE);
+    MoveWindow(st->themeSave, m + themeButton + gap, row2, themeButton, bh, TRUE);
+    MoveWindow(st->themeDefault, m + (themeButton + gap) * 2, row2, themeButton, bh, TRUE);
+
+    // Row 3: config buttons.
+    const int row3 = S(st->hwnd, 340);
+    MoveWindow(st->importConfig, m, row3, themeButton, bh, TRUE);
+    MoveWindow(st->exportConfig, m + themeButton + gap, row3, themeButton, bh, TRUE);
+
+    const int closeWidth = S(st->hwnd, 130);
+    MoveWindow(st->close, rc.right - m - closeWidth, rc.bottom - m - bh,
+               closeWidth, bh, TRUE);
+}
+
+void RefreshScheduleStatus(SettingsState* st)
+{
+    const sched::Status status = sched::query();
+
+    if (status.state == sched::State::Scheduled) {
+        const std::wstring time = status.time.empty()
+                                      ? app::Load().scheduleTime
+                                      : Widen(status.time);
+        SetSettingsStatus(st, FormatText(T().scheduleOn, time.c_str()), kSuccess);
+        if (status.time.size() == 5 && st->timeEdit)
+            SetWindowTextW(st->timeEdit, time.c_str());
+    } else if (status.state == sched::State::Error) {
+        SetSettingsStatus(st, Widen(status.error), kDanger);
+    } else {
+        SetSettingsStatus(st, T().scheduleOff, kMuted);
+    }
+}
+
+void ApplyThemeFromSettings(SettingsState* st)
+{
+    ApplyTheme(app::LoadTheme());
+    RebuildSettingsFonts(st);
+    LayoutSettings(st);
+    if (st->onApplied) st->onApplied();
+    InvalidateRect(st->hwnd, nullptr, TRUE);
+    RedrawWindow(st->hwnd, nullptr, nullptr, RDW_FRAME | RDW_INVALIDATE);
+}
+
+// Shared open/save dialog for the two file types. `path` is the initial name
+// for a save dialog and receives the picked file afterwards.
+bool PickSettingsFile(HWND owner, bool save, const wchar_t* label,
+                      const wchar_t* extension, std::wstring& path)
+{
+    wchar_t file[MAX_PATH * 2] = {};
+    lstrcpynW(file, path.c_str(), static_cast<int>(std::size(file)));
+
+    std::wstring filter;
+    filter += label;
+    filter.push_back(L'\0');
+    filter += L"*.";
+    filter += extension;
+    filter.push_back(L'\0');
+    filter += T().filterAll;
+    filter.push_back(L'\0');
+    filter += L"*.*";
+    filter.push_back(L'\0');
+    filter.push_back(L'\0');
+
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner   = owner;
+    ofn.lpstrFilter = filter.c_str();
+    ofn.lpstrFile   = file;
+    ofn.nMaxFile    = static_cast<DWORD>(std::size(file));
+    ofn.lpstrDefExt = extension;
+    ofn.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR |
+                (save ? OFN_OVERWRITEPROMPT
+                      : OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST);
+
+    const BOOL picked = save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn);
+    if (!picked) return false;
+
+    path = file;
+    return true;
+}
+
+void HandleSaveTime(SettingsState* st)
+{
+    wchar_t buffer[16] = {};
+    GetWindowTextW(st->timeEdit, buffer, 15);
+
+    int hour = 0;
+    int minute = 0;
+    if (!cfg::parseClock(cfg::narrow(buffer), hour, minute)) {
+        SetSettingsStatus(st, FormatText(T().scheduleError, L"HH:MM"), kDanger);
+        return;
+    }
+
+    const std::string time = cfg::clockToText(hour, minute);
+    std::string error;
+    if (!sched::enable(time, error)) {
+        SetSettingsStatus(st, FormatText(T().scheduleError, Widen(error).c_str()), kDanger);
+        return;
+    }
+
+    app::SaveSchedule(true, Widen(time));
+    RefreshScheduleStatus(st);
+    SetSettingsStatus(st, FormatText(T().scheduleOn, Widen(time).c_str()), kSuccess);
+}
+
+void HandleTurnOff(SettingsState* st)
+{
+    std::string error;
+    if (!sched::disable(error)) {
+        SetSettingsStatus(st, FormatText(T().scheduleError, Widen(error).c_str()), kDanger);
+        return;
+    }
+    app::SaveSchedule(false, app::Load().scheduleTime);
+    SetSettingsStatus(st, T().scheduleOff, kMuted);
+}
+
+void HandleLoadTheme(SettingsState* st)
+{
+    std::wstring file;
+    if (!PickSettingsFile(st->hwnd, false, T().filterTheme, L"bctheme", file))
+        return;
+
+    cfg::Theme theme;
+    std::string error;
+    if (!cfg::loadThemeFile(file, theme, error)) {
+        SetSettingsStatus(st, Widen(error), kDanger);
+        return;
+    }
+
+    app::SaveThemePath(file);
+    ApplyThemeFromSettings(st);
+    SetSettingsStatus(st, T().themeSaved, kSuccess);
+}
+
+void HandleSaveTheme(SettingsState* st)
+{
+    cfg::Theme theme = CurrentTheme();
+
+    const std::wstring suggested = Widen(theme.name);
+    std::wstring file = (suggested.empty() ? std::wstring(L"theme") : suggested) +
+                        L".bctheme";
+    if (!PickSettingsFile(st->hwnd, true, T().filterTheme, L"bctheme", file))
+        return;
+
+    theme.name = cfg::narrow(file.substr(file.find_last_of(L'\\') + 1));
+    const size_t dot = theme.name.find_last_of('.');
+    if (dot != std::string::npos) theme.name.erase(dot);
+
+    std::string error;
+    if (!cfg::saveThemeFile(file, theme, error)) {
+        SetSettingsStatus(st, Widen(error), kDanger);
+        return;
+    }
+
+    app::SaveThemePath(file);
+    ApplyThemeFromSettings(st);
+    SetSettingsStatus(st, T().themeSaved, kSuccess);
+}
+
+void HandleResetTheme(SettingsState* st)
+{
+    app::SaveThemePath(L"");
+    ApplyThemeFromSettings(st);
+    SetSettingsStatus(st, T().themeResetDone, kSuccess);
+}
+
+void HandleImportConfig(SettingsState* st)
+{
+    std::wstring file;
+    if (!PickSettingsFile(st->hwnd, false, T().filterConfig, L"bcconfig", file))
+        return;
+
+    std::wstring message;
+    if (!app::ImportConfig(file, message)) {
+        SetSettingsStatus(st, message, kDanger);
+        return;
+    }
+
+    ApplyThemeFromSettings(st);
+    RefreshScheduleStatus(st);
+    SetSettingsStatus(st, T().configImported, kSuccess);
+}
+
+void HandleExportConfig(SettingsState* st)
+{
+    std::wstring file = L"DRBackupCreator.bcconfig";
+    if (!PickSettingsFile(st->hwnd, true, T().filterConfig, L"bcconfig", file))
+        return;
+
+    std::wstring message;
+    if (!app::ExportConfig(file, message)) {
+        SetSettingsStatus(st, message, kDanger);
+        return;
+    }
+    SetSettingsStatus(st, T().configImported, kSuccess);
+}
+
+LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    auto* st = reinterpret_cast<SettingsState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+    switch (msg) {
+    case WM_NCCREATE: {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        auto* state = reinterpret_cast<SettingsState*>(cs->lpCreateParams);
+        state->hwnd = hwnd;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+        return TRUE;
+    }
+    case WM_CREATE: {
+        RebuildSettingsFonts(st);
+
+        auto make = [&](const wchar_t* text, int id) {
+            return CreateWindowExW(0, L"BUTTON", text,
+                                   WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                                   0, 0, 0, 0, hwnd,
+                                   reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+                                   GetModuleHandleW(nullptr), nullptr);
+        };
+
+        st->timeEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"21:00",
+                                       WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                                           ES_AUTOHSCROLL | ES_CENTER,
+                                       0, 0, 0, 0, hwnd,
+                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdSetTimeEdit)),
+                                       GetModuleHandleW(nullptr), nullptr);
+        SendMessageW(st->timeEdit, EM_SETLIMITTEXT, 5, 0);
+        SendMessageW(st->timeEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN,
+                     MAKELONG(S(hwnd, 6), S(hwnd, 6)));
+        ApplyDarkEdit(st->timeEdit);
+
+        st->saveTime = make(T().btnScheduleSave, kIdSetSaveTime);
+        st->off = make(T().btnScheduleOff, kIdSetOff);
+        st->themeLoad = make(T().btnThemeLoad, kIdSetThemeLoad);
+        st->themeSave = make(T().btnThemeSave, kIdSetThemeSave);
+        st->themeDefault = make(T().btnThemeReset, kIdSetThemeDefault);
+        st->importConfig = make(T().btnConfigImport, kIdSetImport);
+        st->exportConfig = make(T().btnConfigExport, kIdSetExport);
+        st->close = make(T().btnClose, kIdSetClose);
+
+        StyleButton(st->saveTime, true, false);
+        for (HWND button : {st->off, st->themeLoad, st->themeSave, st->themeDefault,
+                            st->importConfig, st->exportConfig, st->close}) {
+            StyleButton(button, false, false);
+        }
+
+        RebuildSettingsFonts(st);
+        LayoutSettings(st);
+
+        const app::Settings settings = app::Load();
+        SetWindowTextW(st->timeEdit, settings.scheduleTime.c_str());
+
+        RefreshScheduleStatus(st);
+        SetFocus(st->timeEdit);
+        return 0;
+    }
+    case WM_SIZE:
+        if (st) LayoutSettings(st);
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT: {
+        if (!st) break;
+        BufferedPainter paint(hwnd);
+        HDC dc = paint.dc();
+        const RECT& rc = paint.client();
+        const int m = S(hwnd, 24);
+
+        PaintDialogBase(hwnd, dc, T().settingsTitle, T().settingsSubtitle,
+                        st->fontTitle, st->fontSmall, S(hwnd, 22));
+
+        auto section = [&](const wchar_t* text, int y) {
+            RECT r{m, S(hwnd, y), rc.right - m, S(hwnd, y + 22)};
+            DrawWrapped(dc, text, r, st->font, kText,
+                        DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        };
+        auto line = [&](const std::wstring& text, int y, COLORREF color) {
+            RECT r{m, S(hwnd, y), rc.right - m, S(hwnd, y + 22)};
+            DrawWrapped(dc, text, r, st->fontSmall, color,
+                        DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        };
+
+        section(T().scheduleSection, 100);
+        line(T().schedulePrompt, 120, kMuted);
+        line(st->status, 186, st->statusColor);
+
+        section(T().themeSection, 212);
+        line(FormatText(T().themeCurrent, Widen(CurrentTheme().name).c_str()),
+             232, kMuted);
+        line(T().restartHint, 298, kMuted);
+
+        section(T().configSection, 322);
+
+        return 0;
+    }
+    case WM_COMMAND:
+        if (!st) break;
+        switch (LOWORD(wParam)) {
+        case kIdSetSaveTime: HandleSaveTime(st); return 0;
+        case kIdSetOff:      HandleTurnOff(st); return 0;
+        case kIdSetThemeLoad: HandleLoadTheme(st); return 0;
+        case kIdSetThemeSave: HandleSaveTheme(st); return 0;
+        case kIdSetThemeDefault: HandleResetTheme(st); return 0;
+        case kIdSetImport: HandleImportConfig(st); return 0;
+        case kIdSetExport: HandleExportConfig(st); return 0;
+        case kIdSetClose:
+            DestroyWindow(hwnd);
+            return 0;
+        default:
+            break;
+        }
+        return 0;
+    case WM_DRAWITEM:
+        DrawOwnerButton(reinterpret_cast<const DRAWITEMSTRUCT*>(lParam));
+        return TRUE;
+    case WM_CTLCOLOREDIT: {
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetTextColor(dc, kText);
+        SetBkColor(dc, kInput);
+        return reinterpret_cast<LRESULT>(InputBrush());
+    }
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
@@ -968,6 +1395,18 @@ void ShowBackupsDialog(HWND owner, const fs::path& saveDir,
 
     HWND hwnd = CreateAppWindow(kBackupsClass, T().backupsTitle, 900, 560, owner, &state,
                                 BackupsProc);
+    if (!hwnd) return;
+
+    RunModal(hwnd, owner);
+}
+
+void ShowSettingsDialog(HWND owner, std::function<void()> onApplied)
+{
+    SettingsState state;
+    state.onApplied = std::move(onApplied);
+
+    HWND hwnd = CreateAppWindow(kSettingsClass, T().settingsTitle, 560, 470,
+                                owner, &state, SettingsProc);
     if (!hwnd) return;
 
     RunModal(hwnd, owner);

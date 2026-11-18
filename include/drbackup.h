@@ -51,7 +51,11 @@ struct BackupInfo {
 DRBC_API std::optional<fs::path> getLocalAppData();
 DRBC_API std::optional<fs::path> getDeltaruneDir(bool createIfMissing = false);
 
-// %LOCALAPPDATA%\DRBackupCreator - where this port stores every backup.
+// %LOCALAPPDATA%\DRBackupCreator - settings, themes and (by default) backups.
+DRBC_API std::optional<fs::path> getSettingsDir(bool createIfMissing = false);
+
+// Where backups are stored: getSettingsDir() unless settings.ini overrides it
+// with [paths] backup_dir=...
 DRBC_API std::optional<fs::path> getBackupDir(bool createIfMissing = false);
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@
 #include "theme.h"
 #include "i18n.h"
 #include "resource.h"
+#include "settings.h"
 #include "version.h"
 #include "drbackup.h"
 
@@ -28,6 +29,7 @@ enum ControlId : int {
     IDC_REFRESH,
     IDC_EXIT,
     IDC_LANG,
+    IDC_SETTINGS,
     IDC_ABOUT
 };
 
@@ -47,6 +49,7 @@ struct MainState {
     HWND refresh = nullptr;
     HWND exitButton = nullptr;
     HWND langButton = nullptr;
+    HWND settingsButton = nullptr;
     HWND aboutButton = nullptr;
 
     HFONT font = nullptr;
@@ -128,7 +131,7 @@ void RecreateFonts(MainState* st)
     HWND controls[] = {
         st->list, st->editSaves, st->editBackups, st->openSaves, st->openBackups,
         st->create, st->showBackups, st->refresh, st->exitButton, st->langButton,
-        st->aboutButton
+        st->settingsButton, st->aboutButton
     };
 
     for (HWND control : controls) {
@@ -278,14 +281,15 @@ void ShowBackups(MainState* st)
     RefreshSlots(st, false);
 }
 
-void ToggleLanguage(MainState* st)
-{
-    const Lang next = GetLang() == Lang::ES ? Lang::EN : Lang::ES;
-    SetLang(next);
-    SaveLang(next);
+void ApplyThemeChange(MainState* st);
+void LayoutMain(MainState* st);
 
+// Re-applies every visible string. Used after a language change and after the
+// Settings dialog imports a .bcconfig.
+void RefreshTexts(MainState* st)
+{
     SetWindowTextW(st->hwnd, T().appTitle);
-    SetWindowTextW(st->langButton, next == Lang::EN ? L"EN" : L"ES");
+    SetWindowTextW(st->langButton, GetLang() == Lang::EN ? L"EN" : L"ES");
     SetWindowTextW(st->create, T().btnCreate);
     SetWindowTextW(st->showBackups, T().btnBackups);
     SetWindowTextW(st->refresh, T().btnRefresh);
@@ -299,12 +303,32 @@ void ToggleLanguage(MainState* st)
     SetColumnText(st->list, 3, T().colType);
     SetColumnText(st->list, 4, T().colSize);
     SetColumnText(st->list, 5, T().colFile);
+}
+
+void ToggleLanguage(MainState* st)
+{
+    const Lang next = GetLang() == Lang::ES ? Lang::EN : Lang::ES;
+    SetLang(next);
+    SaveLang(next);
+
+    RefreshTexts(st);
 
     st->emptyText = st->saveDir.empty() ? T().noSaveDir : T().emptySlots;
     st->status = T().statusReady;
     st->statusColor = kMuted;
 
     PopulateSlots(st);
+    InvalidateRect(st->hwnd, nullptr, TRUE);
+}
+
+// Called by the Settings dialog after a theme/config change: rebuild the
+// palette-derived fonts and repaint everything.
+void ApplyThemeChange(MainState* st)
+{
+    RecreateFonts(st);
+    RefreshTexts(st);
+    st->emptyText = st->saveDir.empty() ? T().noSaveDir : T().emptySlots;
+    LayoutMain(st);
     InvalidateRect(st->hwnd, nullptr, TRUE);
 }
 
@@ -333,9 +357,13 @@ void LayoutMain(MainState* st)
     if (st->aboutButton)
         MoveWindow(st->aboutButton, width - m - aboutWidth, S(st->hwnd, 16),
                    aboutWidth, headerButtonHeight, TRUE);
+    if (st->settingsButton)
+        MoveWindow(st->settingsButton,
+                   width - m - aboutWidth - aboutWidth - S(st->hwnd, 8),
+                   S(st->hwnd, 16), aboutWidth, headerButtonHeight, TRUE);
     if (st->langButton)
         MoveWindow(st->langButton,
-                   width - m - aboutWidth - langWidth - S(st->hwnd, 8),
+                   width - m - aboutWidth * 2 - langWidth - S(st->hwnd, 16),
                    S(st->hwnd, 16), langWidth, headerButtonHeight, TRUE);
 
     const int card1Y = S(st->hwnd, 78);
@@ -553,6 +581,7 @@ void CreateControls(MainState* st)
     st->refresh = CreateControl(st, L"BUTTON", L"", WS_TABSTOP, 0, IDC_REFRESH);
     st->exitButton = CreateControl(st, L"BUTTON", L"", WS_TABSTOP, 0, IDC_EXIT);
     st->langButton = CreateControl(st, L"BUTTON", L"", WS_TABSTOP, 0, IDC_LANG);
+    st->settingsButton = CreateControl(st, L"BUTTON", L"", WS_TABSTOP, 0, IDC_SETTINGS);
     st->aboutButton = CreateControl(st, L"BUTTON", L"?", WS_TABSTOP, 0, IDC_ABOUT);
 
     StyleButton(st->openSaves, false, false, kPanel);
@@ -562,6 +591,7 @@ void CreateControls(MainState* st)
     StyleButton(st->refresh, false, false);
     StyleButton(st->exitButton, false, false);
     StyleButton(st->langButton, false, false);
+    StyleButton(st->settingsButton, false, false, kBg, true);
     StyleButton(st->aboutButton, false, false);
 
     LVCOLUMNW column{};
@@ -660,18 +690,34 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             LayoutMain(st);
             InvalidateRect(hwnd, nullptr, TRUE);
         }
-        return 0;
-    case WM_GETMINMAXINFO: {
+        return 0;    case WM_GETMINMAXINFO: {
         // Let the system fill the defaults first: clearing ptMaxTrackSize
         // makes Windows clamp the window to the minimum size at creation.
         DefWindowProcW(hwnd, msg, wParam, lParam);
 
         auto* info = reinterpret_cast<MINMAXINFO*>(lParam);
-        RECT rc{0, 0, S(hwnd, 820), S(hwnd, 620)};
-        AdjustWindowRectEx(&rc, static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_STYLE)),
-                           FALSE, static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_EXSTYLE)));
-        info->ptMinTrackSize.x = rc.right - rc.left;
-        info->ptMinTrackSize.y = rc.bottom - rc.top;
+        const cfg::Theme& theme = CurrentTheme();
+        const DWORD style = static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_STYLE));
+        const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_EXSTYLE));
+
+        RECT rc{0, 0, S(hwnd, theme.windowMinWidth), S(hwnd, theme.windowMinHeight)};
+        AdjustWindowRectDpi(rc, style, FALSE, exStyle, DpiOf(hwnd));
+
+        int minWidth  = rc.right - rc.left;
+        int minHeight = rc.bottom - rc.top;
+
+        // A theme must never make the window impossible to resize back.
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        if (GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi)) {
+            const int areaWidth  = mi.rcWork.right - mi.rcWork.left;
+            const int areaHeight = mi.rcWork.bottom - mi.rcWork.top;
+            if (minWidth > areaWidth)   minWidth = areaWidth;
+            if (minHeight > areaHeight) minHeight = areaHeight;
+        }
+
+        info->ptMinTrackSize.x = minWidth;
+        info->ptMinTrackSize.y = minHeight;
 
         // A zero/invalid max would clamp the window to the minimum size.
         if (info->ptMaxTrackSize.x < info->ptMinTrackSize.x ||
@@ -726,6 +772,9 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             return 0;
         case IDC_LANG:
             ToggleLanguage(st);
+            return 0;
+        case IDC_SETTINGS:
+            ShowSettingsDialog(hwnd, [st]() { ApplyThemeChange(st); });
             return 0;
         case IDC_ABOUT:
             ShowAboutDialog(hwnd);
@@ -818,6 +867,11 @@ int RunMainWindow(HINSTANCE instance)
     if (!LoadLang())
         PickLanguage(nullptr);
 
+    // Before the first window exists: the palette and the fonts are global.
+    ApplyTheme(app::LoadTheme());
+
+    const cfg::Theme& theme = CurrentTheme();
+
     WNDCLASSEXW wc{};
     wc.cbSize        = sizeof(wc);
     wc.style         = CS_HREDRAW | CS_VREDRAW;
@@ -834,7 +888,7 @@ int RunMainWindow(HINSTANCE instance)
     HWND hwnd = CreateWindowExW(
         0, kMainClass, T().appTitle,
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-        CW_USEDEFAULT, CW_USEDEFAULT, 960, 740,
+        CW_USEDEFAULT, CW_USEDEFAULT, theme.windowWidth, theme.windowHeight,
         nullptr, nullptr, instance, state);
 
     if (!hwnd) {
@@ -842,14 +896,15 @@ int RunMainWindow(HINSTANCE instance)
         return 1;
     }
 
-    // Scale the default window size to the monitor DPI and centre it on the
-    // work area. Without this, a 125% monitor clamps the window to the
-    // DPI-scaled minimum size, which is larger than 960x740 physical pixels.
+    // Scale the requested theme size to the monitor DPI and centre it on the
+    // work area. A freshly created window still reports 96 DPI, so the monitor
+    // is asked directly; without this a 125% display clips the layout.
     {
-        const int dpi = DpiOf(hwnd);
-        RECT desired{0, 0, MulDiv(960, dpi, 96), MulDiv(740, dpi, 96)};
-        AdjustWindowRectEx(&desired, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-                           FALSE, 0);
+        const int dpi = MonitorDpi(hwnd);
+        RECT desired{0, 0, MulDiv(theme.windowWidth, dpi, 96),
+                     MulDiv(theme.windowHeight, dpi, 96)};
+        AdjustWindowRectDpi(desired, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+                            FALSE, 0, dpi);
 
         int width  = desired.right - desired.left;
         int height = desired.bottom - desired.top;

@@ -5,33 +5,48 @@
 #include <cstdint>
 #include <string>
 
+#include "config.h"
+
 namespace ui {
 
 // ---------------------------------------------------------------------------
 // Palette
+//
+// Runtime values, not constexpr: a .bctheme file can replace them at startup.
+// ApplyTheme() must run before the first window is created.
 // ---------------------------------------------------------------------------
-inline constexpr COLORREF kBg        = RGB(30, 30, 30);
-inline constexpr COLORREF kBgDeep    = RGB(22, 22, 23);
-inline constexpr COLORREF kPanel     = RGB(37, 37, 38);
-inline constexpr COLORREF kPanelAlt  = RGB(43, 43, 45);
-inline constexpr COLORREF kInput     = RGB(28, 28, 30);
-inline constexpr COLORREF kBorder    = RGB(58, 58, 62);
-inline constexpr COLORREF kBorderHot = RGB(92, 92, 98);
-inline constexpr COLORREF kText      = RGB(232, 232, 234);
-inline constexpr COLORREF kMuted     = RGB(150, 150, 156);
-inline constexpr COLORREF kAccent    = RGB(228, 59, 68);
-inline constexpr COLORREF kAccentHot = RGB(241, 82, 91);
-inline constexpr COLORREF kSuccess   = RGB(152, 195, 121);
-inline constexpr COLORREF kDanger    = RGB(230, 112, 120);
-inline constexpr COLORREF kSel       = RGB(58, 42, 45);
-inline constexpr COLORREF kWarnBg    = RGB(52, 30, 33);
-inline constexpr COLORREF kWarnLine  = RGB(116, 48, 54);
+extern COLORREF kBg;
+extern COLORREF kBgDeep;
+extern COLORREF kPanel;
+extern COLORREF kPanelAlt;
+extern COLORREF kInput;
+extern COLORREF kBorder;
+extern COLORREF kBorderHot;
+extern COLORREF kText;
+extern COLORREF kMuted;
+extern COLORREF kAccent;
+extern COLORREF kAccentHot;
+extern COLORREF kSuccess;
+extern COLORREF kDanger;
+extern COLORREF kSel;
+extern COLORREF kWarnBg;
+extern COLORREF kWarnLine;
+
+void ApplyTheme(const cfg::Theme& theme);
+const cfg::Theme& CurrentTheme();
 
 // ---------------------------------------------------------------------------
 // DPI helpers
 // ---------------------------------------------------------------------------
 int DpiOf(HWND hwnd);
 int S(HWND hwnd, int value);
+
+// DPI of the monitor the window is on (or would open on). Unlike DpiOf() this
+// is correct for a freshly created, still hidden window.
+int MonitorDpi(HWND hwnd);
+
+// AdjustWindowRectEx, but with the window's own DPI instead of the system DPI.
+void AdjustWindowRectDpi(RECT& rc, DWORD style, BOOL menu, DWORD exStyle, int dpi);
 
 // ---------------------------------------------------------------------------
 // Dark theming
@@ -64,8 +79,9 @@ void DrawTextCentered(HDC dc, const std::wstring& text, RECT rc, HFONT font,
 // ---------------------------------------------------------------------------
 // Owner-drawn buttons
 // ---------------------------------------------------------------------------
+// `slidersIcon` replaces the label with a three-slider "settings" glyph.
 void StyleButton(HWND button, bool primary = false, bool danger = false,
-                 COLORREF background = kBg);
+                 COLORREF background = kBg, bool slidersIcon = false);
 void DrawOwnerButton(const DRAWITEMSTRUCT* dis);
 
 // ---------------------------------------------------------------------------

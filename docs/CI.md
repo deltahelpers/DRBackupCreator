@@ -15,7 +15,7 @@ change.
 push / PR / manual ──► windows
                         ├─ resolve version
                         ├─ cmake configure + build
-                        ├─ ctest
+                        ├─ ctest                       (core + theme/config parsers)
                         ├─ cpack (portable ZIP)
                         ├─ Inno Setup   -> dist\drbcWindowsInstaller.exe
                         ├─ WiX 6        -> dist\drbcWindowsInstaller.msi
