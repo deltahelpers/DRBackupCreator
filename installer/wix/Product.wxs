@@ -15,7 +15,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <?ifndef Version?>
-  <?define Version = "2.0.0"?>
+  <?define Version = "2.1.0"?>
   <?endif?>
 
   <Package Name="DRBackupCreator"

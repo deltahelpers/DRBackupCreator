@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(DRBackupCreator VERSION 2.0.0 LANGUAGES CXX RC)
+project(DRBackupCreator VERSION 2.1.0 LANGUAGES CXX RC)
 
 # CI can stamp a release version without editing this file:
 #   cmake -B build -DDRBC_RELEASE_VERSION=2.0.0

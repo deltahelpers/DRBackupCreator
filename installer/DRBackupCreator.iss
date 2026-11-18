@@ -9,7 +9,7 @@
 
 #define MyAppName "DRBackupCreator"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.0.0"
+  #define MyAppVersion "2.1.0"
 #endif
 #define MyAppPublisher "DeltaHelpers"
 #define MyAppURL "https://github.com/deltahelpers/DRBackupCreator"
