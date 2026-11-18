@@ -81,20 +81,26 @@
           Document types. The package is per-user, so these land in
           HKCU\Software\Classes; Windows asks once before making them the
           default handler, and uninstalling removes the keys again.
+
+          ProgId/@Icon and Verb/@TargetFile take a File id (not the Icon
+          element), so both point at drbcExe; WiX turns that into
+          "[#drbcExe]" "%1" in the registry.
         -->
         <ProgId Id="DRBackupCreator.Theme"
                 Description="DRBackupCreator theme"
-                Icon="AppIcon">
+                Icon="drbcExe">
           <Extension Id="bctheme" ContentType="text/plain">
-            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;"
+                  TargetFile="drbcExe" />
           </Extension>
         </ProgId>
 
         <ProgId Id="DRBackupCreator.Config"
                 Description="DRBackupCreator configuration"
-                Icon="AppIcon">
+                Icon="drbcExe">
           <Extension Id="bcconfig" ContentType="text/plain">
-            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;"
+                  TargetFile="drbcExe" />
           </Extension>
         </ProgId>
       </Component>
