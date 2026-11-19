@@ -12,6 +12,7 @@
 
 #include <commctrl.h>
 #include <commdlg.h>
+#include <uxtheme.h>
 #include <shellapi.h>
 
 #include <atomic>
@@ -1731,6 +1732,9 @@ LRESULT CALLBACK DownloadProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                                   0, 0, 0, 0, hwnd,
                                   reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdDownloadBar)),
                                   GetModuleHandleW(nullptr), nullptr);
+        // Without this the visual style paints a green bar on white and the
+        // PBM_* colours below are ignored.
+        SetWindowTheme(st->bar, L"", L"");
         st->cancel = CreateWindowExW(0, L"BUTTON", T().cancel,
                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
                                      0, 0, 0, 0, hwnd,
