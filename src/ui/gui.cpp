@@ -5,12 +5,15 @@
 #include "i18n.h"
 #include "resource.h"
 #include "settings.h"
+#include "update_ui.h"
 #include "version.h"
 #include "drbackup.h"
 
 #include <commctrl.h>
 #include <shellapi.h>
 
+#include <ctime>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -65,6 +68,9 @@ struct MainState {
     std::wstring status;
     std::wstring emptyText;
     COLORREF statusColor = kMuted;
+
+    std::shared_ptr<UpdateCheck> updateCheck;
+    bool updateDialogOpen = false;
 
     int dpi = 96;
 
@@ -671,6 +677,18 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
         SetTimer(hwnd, kTimerId, 2000, nullptr);
         SetFocus(st->list);
+
+        // Check GitHub at most once a day. Failures are silent: the user did
+        // not ask for anything, so nothing should pop up when offline.
+        const app::Settings settings = app::Load();
+        const long long now = static_cast<long long>(std::time(nullptr));
+        const bool due = settings.updateLastCheck <= 0 ||
+                         settings.updateLastCheck > now ||
+                         now - settings.updateLastCheck >= 24 * 60 * 60;
+        if (settings.updateAuto && due) {
+            app::SaveUpdateLastCheck(now);
+            st->updateCheck = StartUpdateCheck(hwnd);
+        }
         return 0;
     }
     case WM_SIZE:
@@ -799,6 +817,36 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if (st && LOWORD(wParam) != WA_INACTIVE && IsWindowEnabled(hwnd))
             RefreshSlots(st, false);
         return 0;
+    case kUpdateCheckDone: {
+        if (!st || !st->updateCheck) return 0;
+
+        bool ok = false;
+        upd::ReleaseInfo info;
+        std::string error;
+        {
+            std::lock_guard<std::mutex> lock(st->updateCheck->mutex);
+            ok = st->updateCheck->ok;
+            info = st->updateCheck->info;
+            error = st->updateCheck->error;
+        }
+        st->updateCheck.reset();
+        (void)error;
+
+        if (!ok) return 0;
+        if (!upd::IsNewer(info.version, DRBC_VERSION_A)) return 0;
+
+        const app::Settings settings = app::Load();
+        if (settings.updateSkipped == Widen(info.version)) return 0;
+        if (st->updateDialogOpen) return 0;
+
+        st->updateDialogOpen = true;
+        const bool install = ShowUpdateDialog(hwnd, info, true) &&
+                             RunDownloadAndInstall(hwnd, info);
+        st->updateDialogOpen = false;
+
+        if (install) DestroyWindow(hwnd);
+        return 0;
+    }
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;

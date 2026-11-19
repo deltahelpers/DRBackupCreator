@@ -9,7 +9,7 @@
 
 #define MyAppName "DRBackupCreator"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.1.0"
+  #define MyAppVersion "2.2.0"
 #endif
 #define MyAppPublisher "DeltaHelpers"
 #define MyAppURL "https://github.com/deltahelpers/DRBackupCreator"
@@ -69,7 +69,9 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; No skipifsilent: a silent self-update closes the app, so it must come back
+; afterwards. Interactive installs use the Finish page checkbox.
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall
 
 ; ---------------------------------------------------------------------------
 ; File associations for the two document types.

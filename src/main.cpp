@@ -2,6 +2,7 @@
 #include <shellapi.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -15,6 +16,7 @@
 #include "settings.h"
 #include "ui/gui.h"
 #include "ui/i18n.h"
+#include "update.h"
 #include "version.h"
 
 int RunCli(const std::vector<std::wstring>& args);
@@ -74,6 +76,7 @@ void PrintUsage()
             "  drbc.exe --config <file.bcconfig> Imports a configuration file\n"
             "  drbc.exe --export-config <file>   Saves the current settings\n"
             "  drbc.exe --auto-backup            Silent backup (used by the schedule)\n"
+            "  drbc.exe --check-updates          Asks GitHub for a newer release\n"
             "  drbc.exe --help                   Prints this help\n"
             "  drbc.exe --version                Prints the version\n";
     } else {
@@ -92,6 +95,7 @@ void PrintUsage()
             "  drbc.exe --config <archivo.bcconfig> Importa una configuración\n"
             "  drbc.exe --export-config <archivo> Guarda la configuración actual\n"
             "  drbc.exe --auto-backup            Backup silencioso (lo usa la programación)\n"
+            "  drbc.exe --check-updates          Busca una versión nueva en GitHub\n"
             "  drbc.exe --help                   Muestra esta ayuda\n"
             "  drbc.exe --version                Muestra la versión\n";
     }
@@ -272,11 +276,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     bool help = false;
     bool version = false;
     bool autoBackup = false;
+    bool checkUpdates = false;
 
     std::wstring scheduleArg;
     std::wstring themeArg;
     std::wstring configArg;
     std::wstring exportArg;
+    std::wstring downloadArg;
     std::wstring openFile;
 
     for (size_t i = 1; i < args.size(); ++i) {
@@ -292,6 +298,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         else if (arg == L"--help" || arg == L"-h") help = true;
         else if (arg == L"--version" || arg == L"-v") version = true;
         else if (arg == L"--auto-backup") autoBackup = true;
+        else if (arg == L"--check-updates") checkUpdates = true;
+        else if (arg == L"--download-update") takeValue(downloadArg);
         else if (arg == L"--schedule") takeValue(scheduleArg);
         else if (arg == L"--theme") takeValue(themeArg);
         else if (arg == L"--config") takeValue(configArg);
@@ -308,6 +316,66 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         AttachParentConsole();
         if (version) std::cout << "DRBackupCreator " DRBC_VERSION_A "\n";
         if (help) PrintUsage();
+        return 0;
+    }
+
+    if (checkUpdates) {
+        AttachParentConsole();
+        upd::ReleaseInfo info;
+        std::string error;
+        if (!upd::FetchLatestRelease(info, error)) {
+            std::cout << "update check failed: " << error << "\n";
+            return 1;
+        }
+        if (upd::IsNewer(info.version, DRBC_VERSION_A)) {
+            std::cout << info.version << " available (you have " DRBC_VERSION_A ")\n";
+            if (!info.htmlUrl.empty()) std::cout << info.htmlUrl << "\n";
+        } else {
+            std::cout << "up to date (" DRBC_VERSION_A ")\n";
+        }
+        return 0;
+    }
+
+    if (!downloadArg.empty()) {
+        AttachParentConsole();
+        upd::ReleaseInfo info;
+        std::string error;
+        if (!upd::FetchLatestRelease(info, error)) {
+            std::cout << "update check failed: " << error << "\n";
+            return 1;
+        }
+        if (info.installerUrl.empty()) {
+            std::cout << "the release has no installer asset\n";
+            return 1;
+        }
+
+        std::error_code ec;
+        const std::filesystem::path dir(downloadArg);
+        std::filesystem::create_directories(dir, ec);
+        const std::filesystem::path dest = dir / L"drbcWindowsInstaller.exe";
+
+        int lastPercent = -1;
+        const bool downloaded = upd::DownloadFile(
+            info.installerUrl, dest,
+            [&lastPercent](int percent) {
+                if (percent != lastPercent) {
+                    lastPercent = percent;
+                    std::cout << "\r" << percent << "%  " << std::flush;
+                }
+            },
+            [] { return false; }, error);
+        std::cout << "\n";
+        if (!downloaded) {
+            std::cout << "download failed: " << error << "\n";
+            return 1;
+        }
+        if (!upd::VerifyDigest(dest, info.installerDigest, error)) {
+            std::cout << "checksum failed: " << error << "\n";
+            return 1;
+        }
+
+        std::cout << "downloaded " << info.version << " -> " << cfg::narrow(dest.wstring())
+                  << "\nchecksum ok\n";
         return 0;
     }
 

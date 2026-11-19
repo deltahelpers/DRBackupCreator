@@ -54,6 +54,18 @@ Settings Load()
     if (!time.empty()) settings.scheduleTime = time;
     settings.scheduleEnabled = readValue(L"schedule", L"enabled") == L"1";
 
+    // "auto" is absent on fresh installs, and absent means on.
+    settings.updateAuto = readValue(L"update", L"auto") != L"0";
+    const std::wstring lastCheck = readValue(L"update", L"last_check");
+    if (!lastCheck.empty()) {
+        try {
+            settings.updateLastCheck = std::stoll(lastCheck);
+        } catch (...) {
+            settings.updateLastCheck = 0;
+        }
+    }
+    settings.updateSkipped = readValue(L"update", L"skipped");
+
     return settings;
 }
 
@@ -71,6 +83,21 @@ void SaveSchedule(bool enabled, const std::wstring& time)
 {
     writeValue(L"schedule", L"enabled", enabled ? L"1" : L"");
     writeValue(L"schedule", L"time", time);
+}
+
+void SaveUpdateAuto(bool enabled)
+{
+    writeValue(L"update", L"auto", enabled ? L"1" : L"0");
+}
+
+void SaveUpdateLastCheck(long long unixTime)
+{
+    writeValue(L"update", L"last_check", std::to_wstring(unixTime));
+}
+
+void SaveUpdateSkipped(const std::wstring& version)
+{
+    writeValue(L"update", L"skipped", version);
 }
 
 cfg::Theme LoadTheme(std::string* error)

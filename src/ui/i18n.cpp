@@ -111,6 +111,24 @@ const Strings kSpanish = {
     /* filterAll       */ L"Todos los archivos",
     /* scheduleError   */ L"No se pudo programar: %s",
     /* themeError      */ L"No se pudo cargar el tema: %s",
+
+    /* updateSection   */ L"Actualizaciones",
+    /* updateAutoOn    */ L"Búsqueda automática: activada",
+    /* updateAutoOff   */ L"Búsqueda automática: desactivada",
+    /* btnCheckNow     */ L"Buscar ahora",
+    /* updateChecking  */ L"Buscando en GitHub…",
+    /* updateUpToDate  */ L"Tienes la última versión (%s).",
+    /* updateFailed    */ L"No se pudo comprobar: %s",
+    /* updateTitle     */ L"Actualización disponible",
+    /* updateSubtitle  */ L"Tienes la versión %s y la última es la %s.",
+    /* btnInstallUpdate*/ L"Instalar actualización",
+    /* btnLater        */ L"Más tarde",
+    /* btnSkipVersion  */ L"Saltar esta versión",
+    /* downloadTitle   */ L"Descargando actualización",
+    /* downloadText    */ L"Descargando la versión %s…",
+    /* downloadFailed  */ L"La descarga falló: %s",
+    /* updateNoNotes   */ L"Esta versión no trae notas.",
+    /* updateReleasePage*/ L"Abrir la página de la versión",
 };
 
 const Strings kEnglish = {
@@ -215,6 +233,24 @@ const Strings kEnglish = {
     /* filterAll       */ L"All files",
     /* scheduleError   */ L"Could not schedule: %s",
     /* themeError      */ L"Could not load the theme: %s",
+
+    /* updateSection   */ L"Updates",
+    /* updateAutoOn    */ L"Automatic checks: on",
+    /* updateAutoOff   */ L"Automatic checks: off",
+    /* btnCheckNow     */ L"Check now",
+    /* updateChecking  */ L"Checking GitHub…",
+    /* updateUpToDate  */ L"You have the latest version (%s).",
+    /* updateFailed    */ L"Could not check: %s",
+    /* updateTitle     */ L"Update available",
+    /* updateSubtitle  */ L"You have %s and the latest is %s.",
+    /* btnInstallUpdate*/ L"Install update",
+    /* btnLater        */ L"Later",
+    /* btnSkipVersion  */ L"Skip this version",
+    /* downloadTitle   */ L"Downloading update",
+    /* downloadText    */ L"Downloading version %s…",
+    /* downloadFailed  */ L"The download failed: %s",
+    /* updateNoNotes   */ L"This release has no notes.",
+    /* updateReleasePage*/ L"Open the release page",
 };
 
 } // namespace

@@ -5,6 +5,8 @@
 #include "settings.h"
 #include "theme.h"
 #include "resource.h"
+#include "update.h"
+#include "update_ui.h"
 #include "version.h"
 #include "drbackup.h"
 
@@ -12,7 +14,10 @@
 #include <commdlg.h>
 #include <shellapi.h>
 
+#include <atomic>
 #include <cwchar>
+#include <memory>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -45,6 +50,8 @@ constexpr int kIdSetThemeDefault = 3406;
 constexpr int kIdSetImport      = 3407;
 constexpr int kIdSetExport      = 3408;
 constexpr int kIdSetClose       = 3409;
+constexpr int kIdSetCheckNow    = 3410;
+constexpr int kIdSetUpdateAuto  = 3411;
 
 const wchar_t* kConfirmClass = L"DRBC_Confirm";
 const wchar_t* kLanguageClass = L"DRBC_Language";
@@ -425,6 +432,8 @@ struct SettingsState {
     HWND themeDefault = nullptr;
     HWND importConfig = nullptr;
     HWND exportConfig = nullptr;
+    HWND checkNow = nullptr;
+    HWND autoButton = nullptr;
     HWND close = nullptr;
 
     HFONT font = nullptr;
@@ -433,6 +442,14 @@ struct SettingsState {
 
     std::wstring status;
     COLORREF statusColor = kMuted;
+
+    bool updateAuto = true;
+    bool checking = false;
+    std::shared_ptr<UpdateCheck> check;
+    std::wstring updateStatus;
+    COLORREF updateStatusColor = kMuted;
+    int updateRow = 0;          // filled by LayoutSettings, used when painting
+
     std::function<void()> onApplied;
 };
 
@@ -456,7 +473,7 @@ void RebuildSettingsFonts(SettingsState* st)
 
     HWND controls[] = {st->timeEdit, st->saveTime, st->off, st->themeLoad,
                        st->themeSave, st->themeDefault, st->importConfig,
-                       st->exportConfig, st->close};
+                       st->exportConfig, st->checkNow, st->autoButton, st->close};
     for (HWND control : controls) {
         if (control) SendMessageW(control, WM_SETFONT,
                                   reinterpret_cast<WPARAM>(st->font), TRUE);
@@ -493,8 +510,18 @@ void LayoutSettings(SettingsState* st)
     MoveWindow(st->importConfig, m, row3, themeButton, bh, TRUE);
     MoveWindow(st->exportConfig, m + themeButton + gap, row3, themeButton, bh, TRUE);
 
+    // Row 4: updates, anchored above the Close button so the section always
+    // stays inside the window.
+    const int closeTop = rc.bottom - m - bh;
+    const int row4 = closeTop - gap - bh;
+    st->updateRow = row4;
+
+    const int autoWidth = S(st->hwnd, 224);
+    MoveWindow(st->checkNow, m, row4, themeButton, bh, TRUE);
+    MoveWindow(st->autoButton, m + themeButton + gap, row4, autoWidth, bh, TRUE);
+
     const int closeWidth = S(st->hwnd, 130);
-    MoveWindow(st->close, rc.right - m - closeWidth, rc.bottom - m - bh,
+    MoveWindow(st->close, rc.right - m - closeWidth, closeTop,
                closeWidth, bh, TRUE);
 }
 
@@ -680,6 +707,72 @@ void HandleExportConfig(SettingsState* st)
     SetSettingsStatus(st, T().configImported, kSuccess);
 }
 
+void UpdateAutoLabel(SettingsState* st)
+{
+    if (st->autoButton)
+        SetWindowTextW(st->autoButton,
+                       st->updateAuto ? T().updateAutoOn : T().updateAutoOff);
+}
+
+void SetUpdateStatus(SettingsState* st, const std::wstring& text, COLORREF color)
+{
+    st->updateStatus = text;
+    st->updateStatusColor = color;
+    if (st->hwnd) InvalidateRect(st->hwnd, nullptr, FALSE);
+}
+
+void StartCheckFromSettings(SettingsState* st)
+{
+    if (st->checking) return;
+
+    st->checking = true;
+    if (st->checkNow) EnableWindow(st->checkNow, FALSE);
+    SetUpdateStatus(st, T().updateChecking, kMuted);
+    st->check = StartUpdateCheck(st->hwnd);
+}
+
+void HandleUpdateCheckDone(SettingsState* st)
+{
+    st->checking = false;
+    if (st->checkNow) EnableWindow(st->checkNow, TRUE);
+
+    if (!st->check) return;
+
+    bool ok = false;
+    upd::ReleaseInfo info;
+    std::string error;
+    {
+        std::lock_guard<std::mutex> lock(st->check->mutex);
+        ok = st->check->ok;
+        info = st->check->info;
+        error = st->check->error;
+    }
+    st->check.reset();
+
+    if (!ok) {
+        SetUpdateStatus(st, FormatText(T().updateFailed, Widen(error).c_str()), kDanger);
+        return;
+    }
+
+    if (!upd::IsNewer(info.version, DRBC_VERSION_A)) {
+        SetUpdateStatus(st, FormatText(T().updateUpToDate, DRBC_VERSION_W), kSuccess);
+        return;
+    }
+
+    SetUpdateStatus(st, FormatText(T().updateSubtitle, DRBC_VERSION_W,
+                                   cfg::widen(info.version).c_str()), kSuccess);
+
+    // The dialogs run their own modal loops, so this works from inside the
+    // settings loop too.
+    if (ShowUpdateDialog(st->hwnd, info, true) &&
+        RunDownloadAndInstall(st->hwnd, info)) {
+        // The installer needs the app gone to replace its files.
+        HWND main = GetWindow(st->hwnd, GW_OWNER);
+        DestroyWindow(st->hwnd);
+        if (main) PostMessageW(main, WM_CLOSE, 0, 0);
+    }
+}
+
 LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     auto* st = reinterpret_cast<SettingsState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
@@ -694,6 +787,8 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     }
     case WM_CREATE: {
         RebuildSettingsFonts(st);
+
+        const app::Settings settings = app::Load();
 
         auto make = [&](const wchar_t* text, int id) {
             return CreateWindowExW(0, L"BUTTON", text,
@@ -721,18 +816,23 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         st->themeDefault = make(T().btnThemeReset, kIdSetThemeDefault);
         st->importConfig = make(T().btnConfigImport, kIdSetImport);
         st->exportConfig = make(T().btnConfigExport, kIdSetExport);
+        st->checkNow = make(T().btnCheckNow, kIdSetCheckNow);
+        st->autoButton = make(L"", kIdSetUpdateAuto);
         st->close = make(T().btnClose, kIdSetClose);
+
+        st->updateAuto = settings.updateAuto;
+        UpdateAutoLabel(st);
 
         StyleButton(st->saveTime, true, false);
         for (HWND button : {st->off, st->themeLoad, st->themeSave, st->themeDefault,
-                            st->importConfig, st->exportConfig, st->close}) {
+                            st->importConfig, st->exportConfig, st->checkNow,
+                            st->autoButton, st->close}) {
             StyleButton(button, false, false);
         }
 
         RebuildSettingsFonts(st);
         LayoutSettings(st);
 
-        const app::Settings settings = app::Load();
         SetWindowTextW(st->timeEdit, settings.scheduleTime.c_str());
 
         RefreshScheduleStatus(st);
@@ -776,6 +876,20 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
         section(T().configSection, 322);
 
+        // Updates sits right above its buttons, wherever they ended up.
+        if (st->updateRow > 0) {
+            RECT sr{m, st->updateRow - S(hwnd, 48), rc.right - m,
+                    st->updateRow - S(hwnd, 26)};
+            DrawWrapped(dc, T().updateSection, sr, st->font, kText,
+                        DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+
+            RECT ur{m, st->updateRow - S(hwnd, 26), rc.right - m,
+                    st->updateRow - S(hwnd, 4)};
+            DrawWrapped(dc, st->updateStatus, ur, st->fontSmall,
+                        st->updateStatusColor,
+                        DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        }
+
         return 0;
     }
     case WM_COMMAND:
@@ -788,12 +902,22 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         case kIdSetThemeDefault: HandleResetTheme(st); return 0;
         case kIdSetImport: HandleImportConfig(st); return 0;
         case kIdSetExport: HandleExportConfig(st); return 0;
+        case kIdSetCheckNow: StartCheckFromSettings(st); return 0;
+        case kIdSetUpdateAuto:
+            st->updateAuto = !st->updateAuto;
+            app::SaveUpdateAuto(st->updateAuto);
+            UpdateAutoLabel(st);
+            InvalidateRect(st->autoButton, nullptr, TRUE);
+            return 0;
         case kIdSetClose:
             DestroyWindow(hwnd);
             return 0;
         default:
             break;
         }
+        return 0;
+    case ui::kUpdateCheckDone:
+        if (st) HandleUpdateCheckDone(st);
         return 0;
     case WM_DRAWITEM:
         DrawOwnerButton(reinterpret_cast<const DRAWITEMSTRUCT*>(lParam));
@@ -1339,6 +1463,403 @@ LRESULT CALLBACK BackupsProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+// ---------------------------------------------------------------------------
+// Update available
+// ---------------------------------------------------------------------------
+constexpr int kIdUpdateNotes   = 3501;
+constexpr int kIdUpdateInstall = 3502;
+constexpr int kIdUpdateLater   = 3503;
+constexpr int kIdUpdateSkip    = 3504;
+
+constexpr int kIdDownloadBar    = 3511;
+constexpr int kIdDownloadCancel = 3512;
+
+constexpr UINT kDownloadProgress = WM_APP + 72;
+constexpr UINT kDownloadDone     = WM_APP + 73;
+
+const wchar_t* kUpdateClass   = L"DRBC_Update";
+const wchar_t* kDownloadClass = L"DRBC_Download";
+
+struct UpdateState {
+    HWND hwnd = nullptr;
+    HWND notes = nullptr;
+    HWND install = nullptr;
+    HWND later = nullptr;
+    HWND skip = nullptr;
+    HFONT font = nullptr;
+    HFONT fontTitle = nullptr;
+    HFONT fontSmall = nullptr;
+    const upd::ReleaseInfo* info = nullptr;
+    bool allowSkip = true;
+    bool accepted = false;
+};
+
+void LayoutUpdate(UpdateState* st)
+{
+    RECT rc{};
+    GetClientRect(st->hwnd, &rc);
+    const int m = S(st->hwnd, 22);
+    const int gap = S(st->hwnd, 10);
+    const int buttonHeight = S(st->hwnd, 36);
+    const int buttonWidth = S(st->hwnd, 132);
+    const int bottom = rc.bottom - m - buttonHeight;
+    const int notesTop = S(st->hwnd, 96);
+
+    MoveWindow(st->notes, m, notesTop, rc.right - m * 2,
+               bottom - notesTop - gap, TRUE);
+
+    int x = rc.right - m - buttonWidth;
+    MoveWindow(st->install, x, bottom, buttonWidth, buttonHeight, TRUE);
+    x -= gap + buttonWidth;
+    MoveWindow(st->later, x, bottom, buttonWidth, buttonHeight, TRUE);
+    if (st->skip) MoveWindow(st->skip, m, bottom, buttonWidth, buttonHeight, TRUE);
+}
+
+LRESULT CALLBACK UpdateProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    auto* st = reinterpret_cast<UpdateState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+    switch (msg) {
+    case WM_NCCREATE: {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        auto* state = reinterpret_cast<UpdateState*>(cs->lpCreateParams);
+        state->hwnd = hwnd;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+        return TRUE;
+    }
+    case WM_CREATE: {
+        if (!st || !st->info) return -1;
+
+        st->font = MakeFont(10, FW_NORMAL, DpiOf(hwnd));
+        st->fontTitle = MakeFont(12, FW_SEMIBOLD, DpiOf(hwnd));
+        st->fontSmall = MakeFont(9, FW_NORMAL, DpiOf(hwnd));
+
+        std::wstring notes = cfg::widen(upd::NotesToPlainText(st->info->notes));
+        if (notes.empty()) notes = T().updateNoNotes;
+
+        st->notes = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", notes.c_str(),
+                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
+                                    ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
+                                    0, 0, 0, 0, hwnd,
+                                    reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdUpdateNotes)),
+                                    GetModuleHandleW(nullptr), nullptr);
+
+        st->install = CreateWindowExW(0, L"BUTTON", T().btnInstallUpdate,
+                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                                      0, 0, 0, 0, hwnd,
+                                      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdUpdateInstall)),
+                                      GetModuleHandleW(nullptr), nullptr);
+        st->later = CreateWindowExW(0, L"BUTTON", T().btnLater,
+                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                                    0, 0, 0, 0, hwnd,
+                                    reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdUpdateLater)),
+                                    GetModuleHandleW(nullptr), nullptr);
+
+        if (st->allowSkip) {
+            st->skip = CreateWindowExW(0, L"BUTTON", T().btnSkipVersion,
+                                       WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                                       0, 0, 0, 0, hwnd,
+                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdUpdateSkip)),
+                                       GetModuleHandleW(nullptr), nullptr);
+        }
+
+        SendMessageW(st->notes, WM_SETFONT, reinterpret_cast<WPARAM>(st->font), TRUE);
+        SendMessageW(st->install, WM_SETFONT, reinterpret_cast<WPARAM>(st->font), TRUE);
+        SendMessageW(st->later, WM_SETFONT, reinterpret_cast<WPARAM>(st->font), TRUE);
+        if (st->skip) SendMessageW(st->skip, WM_SETFONT, reinterpret_cast<WPARAM>(st->font), TRUE);
+
+        StyleButton(st->install, true, false);
+        StyleButton(st->later, false, false);
+        if (st->skip) StyleButton(st->skip, false, false);
+
+        SetFocus(st->install);
+        LayoutUpdate(st);
+        return 0;
+    }
+    case WM_SIZE:
+        if (st) LayoutUpdate(st);
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT: {
+        if (!st || !st->info) break;
+
+        std::wstring subtitle = FormatText(T().updateSubtitle, DRBC_VERSION_W,
+                                           cfg::widen(st->info->version).c_str());
+
+        BufferedPainter paint(hwnd);
+        HDC dc = paint.dc();
+        PaintDialogBase(hwnd, dc, T().updateTitle, subtitle, st->fontTitle, st->fontSmall,
+                        S(hwnd, 22));
+        return 0;
+    }
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT: {
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetTextColor(dc, kText);
+        SetBkColor(dc, kInput);
+        return reinterpret_cast<LRESULT>(InputBrush());
+    }
+    case WM_DRAWITEM:
+        DrawOwnerButton(reinterpret_cast<const DRAWITEMSTRUCT*>(lParam));
+        return TRUE;
+    case WM_COMMAND:
+        if (!st) break;
+        switch (LOWORD(wParam)) {
+        case kIdUpdateInstall:
+            st->accepted = true;
+            DestroyWindow(hwnd);
+            return 0;
+        case kIdUpdateSkip:
+            if (st->info) app::SaveUpdateSkipped(cfg::widen(st->info->version));
+            DestroyWindow(hwnd);
+            return 0;
+        case kIdUpdateLater:
+        case IDCANCEL:
+            DestroyWindow(hwnd);
+            return 0;
+        default:
+            break;
+        }
+        return 0;
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_NCDESTROY:
+        if (st) {
+            if (st->font) DeleteObject(st->font);
+            if (st->fontTitle) DeleteObject(st->fontTitle);
+            if (st->fontSmall) DeleteObject(st->fontSmall);
+            st->font = st->fontTitle = st->fontSmall = nullptr;
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        }
+        return 0;
+    default:
+        break;
+    }
+
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+// ---------------------------------------------------------------------------
+// Download progress
+// ---------------------------------------------------------------------------
+struct DownloadState {
+    HWND hwnd = nullptr;
+    HWND bar = nullptr;
+    HWND cancel = nullptr;
+    HFONT font = nullptr;
+    HFONT fontTitle = nullptr;
+    HFONT fontSmall = nullptr;
+
+    std::wstring version;
+    std::filesystem::path dest;
+
+    std::atomic<bool> cancelled{false};
+    std::mutex mutex;
+    int percent = 0;
+    bool done = false;
+    bool ok = false;
+    std::string error;
+    std::wstring message;      // shown instead of the percentage on failure
+    bool started = false;      // the installer was launched
+};
+
+void LayoutDownload(DownloadState* st)
+{
+    RECT rc{};
+    GetClientRect(st->hwnd, &rc);
+    const int m = S(st->hwnd, 22);
+    const int buttonHeight = S(st->hwnd, 36);
+    const int buttonWidth = S(st->hwnd, 132);
+
+    MoveWindow(st->bar, m, S(st->hwnd, 108), rc.right - m * 2, S(st->hwnd, 12), TRUE);
+    MoveWindow(st->cancel, rc.right - m - buttonWidth, rc.bottom - m - buttonHeight,
+               buttonWidth, buttonHeight, TRUE);
+}
+
+void StartDownload(const std::shared_ptr<DownloadState>& state, upd::ReleaseInfo info)
+{
+    const HWND target = state->hwnd;
+    const std::filesystem::path dest = state->dest;
+
+    std::thread([state, target, dest, info = std::move(info)]() {
+        std::string error;
+        const bool downloaded = upd::DownloadFile(
+            info.installerUrl, dest,
+            [target](int percent) {
+                if (IsWindow(target))
+                    PostMessageW(target, kDownloadProgress,
+                                 static_cast<WPARAM>(percent), 0);
+            },
+            [state] { return state->cancelled.load(); },
+            error);
+
+        bool ok = downloaded;
+        if (ok) ok = upd::VerifyDigest(dest, info.installerDigest, error);
+
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->ok = ok;
+            state->error = error;
+        }
+        if (IsWindow(target)) PostMessageW(target, kDownloadDone, 0, 0);
+    }).detach();
+}
+
+LRESULT CALLBACK DownloadProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    auto* st = reinterpret_cast<DownloadState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+    switch (msg) {
+    case WM_NCCREATE: {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        auto* state = reinterpret_cast<DownloadState*>(cs->lpCreateParams);
+        state->hwnd = hwnd;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+        return TRUE;
+    }
+    case WM_CREATE: {
+        if (!st) return -1;
+
+        st->font = MakeFont(10, FW_NORMAL, DpiOf(hwnd));
+        st->fontTitle = MakeFont(12, FW_SEMIBOLD, DpiOf(hwnd));
+        st->fontSmall = MakeFont(9, FW_NORMAL, DpiOf(hwnd));
+
+        st->bar = CreateWindowExW(0, PROGRESS_CLASSW, L"",
+                                  WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+                                  0, 0, 0, 0, hwnd,
+                                  reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdDownloadBar)),
+                                  GetModuleHandleW(nullptr), nullptr);
+        st->cancel = CreateWindowExW(0, L"BUTTON", T().cancel,
+                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                                     0, 0, 0, 0, hwnd,
+                                     reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdDownloadCancel)),
+                                     GetModuleHandleW(nullptr), nullptr);
+
+        SendMessageW(st->cancel, WM_SETFONT, reinterpret_cast<WPARAM>(st->font), TRUE);
+        StyleButton(st->cancel, false, false);
+
+        SendMessageW(st->bar, PBM_SETBKCOLOR, 0, static_cast<LPARAM>(kInput));
+        SendMessageW(st->bar, PBM_SETBARCOLOR, 0, static_cast<LPARAM>(kAccent));
+        SendMessageW(st->bar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+
+        SetFocus(st->cancel);
+        LayoutDownload(st);
+        return 0;
+    }
+    case WM_SIZE:
+        if (st) LayoutDownload(st);
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT: {
+        if (!st) break;
+
+        BufferedPainter paint(hwnd);
+        HDC dc = paint.dc();
+        RECT rc = paint.client();
+        const int m = S(hwnd, 22);
+
+        PaintDialogBase(hwnd, dc, T().downloadTitle,
+                        FormatText(T().downloadText, st->version.c_str()),
+                        st->fontTitle, st->fontSmall, m);
+
+        {
+            std::lock_guard<std::mutex> lock(st->mutex);
+            RECT tr{m, S(hwnd, 132), rc.right - m, S(hwnd, 160)};
+            if (!st->message.empty()) {
+                DrawWrapped(dc, st->message, tr, st->font, kDanger,
+                            DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+            } else {
+                wchar_t line[128];
+                swprintf(line, 128, L"%d%%", st->percent < 0 ? 0 : st->percent);
+                DrawWrapped(dc, line, tr, st->font, kMuted,
+                            DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+            }
+        }
+        return 0;
+    }
+    case WM_DRAWITEM:
+        DrawOwnerButton(reinterpret_cast<const DRAWITEMSTRUCT*>(lParam));
+        return TRUE;
+    case kDownloadProgress:
+        if (!st) return 0;
+        {
+            std::lock_guard<std::mutex> lock(st->mutex);
+            st->percent = static_cast<int>(wParam);
+        }
+        SendMessageW(st->bar, PBM_SETPOS,
+                     static_cast<WPARAM>(wParam < 0 ? 0 : wParam), 0);
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    case kDownloadDone:
+        if (!st) return 0;
+
+        if (st->cancelled.load()) {
+            DestroyWindow(hwnd);
+            return 0;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(st->mutex);
+            st->done = true;
+            if (!st->ok)
+                st->message = FormatText(T().downloadFailed,
+                                         cfg::widen(st->error).c_str());
+        }
+
+        if (st->ok) {
+            std::string error;
+            if (upd::RunInstaller(st->dest, error)) {
+                st->started = true;
+                DestroyWindow(hwnd);
+                return 0;
+            }
+            std::lock_guard<std::mutex> lock(st->mutex);
+            st->message = FormatText(T().downloadFailed, cfg::widen(error).c_str());
+        }
+
+        SetWindowTextW(st->cancel, T().btnClose);
+        EnableWindow(st->cancel, TRUE);
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    case WM_COMMAND:
+        if (!st) break;
+        if (LOWORD(wParam) == kIdDownloadCancel) {
+            if (st->done) {
+                DestroyWindow(hwnd);
+            } else {
+                st->cancelled.store(true);
+                EnableWindow(st->cancel, FALSE);
+            }
+            return 0;
+        }
+        return 0;
+    case WM_CLOSE:
+        if (st && !st->done) {
+            st->cancelled.store(true);
+            EnableWindow(st->cancel, FALSE);
+            return 0;
+        }
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_NCDESTROY:
+        if (st) {
+            if (st->font) DeleteObject(st->font);
+            if (st->fontTitle) DeleteObject(st->fontTitle);
+            if (st->fontSmall) DeleteObject(st->fontSmall);
+            st->font = st->fontTitle = st->fontSmall = nullptr;
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        }
+        return 0;
+    default:
+        break;
+    }
+
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -1405,11 +1926,42 @@ void ShowSettingsDialog(HWND owner, std::function<void()> onApplied)
     SettingsState state;
     state.onApplied = std::move(onApplied);
 
-    HWND hwnd = CreateAppWindow(kSettingsClass, T().settingsTitle, 560, 470,
+    HWND hwnd = CreateAppWindow(kSettingsClass, T().settingsTitle, 560, 560,
                                 owner, &state, SettingsProc);
     if (!hwnd) return;
 
     RunModal(hwnd, owner);
+}
+
+bool ShowUpdateDialog(HWND owner, const upd::ReleaseInfo& info, bool allowSkip)
+{
+    UpdateState state;
+    state.info = &info;
+    state.allowSkip = allowSkip;
+
+    HWND hwnd = CreateAppWindow(kUpdateClass, T().updateTitle, 620, 540, owner,
+                                &state, UpdateProc);
+    if (!hwnd) return false;
+
+    RunModal(hwnd, owner);
+    return state.accepted;
+}
+
+bool RunDownloadAndInstall(HWND owner, const upd::ReleaseInfo& info)
+{
+    auto state = std::make_shared<DownloadState>();
+    state->version = cfg::widen(info.version);
+    state->dest = upd::UpdateDir(true) / L"drbcWindowsInstaller.exe";
+
+    if (state->dest.filename().empty()) return false;
+
+    HWND hwnd = CreateAppWindow(kDownloadClass, T().downloadTitle, 560, 300, owner,
+                                state.get(), DownloadProc);
+    if (!hwnd) return false;
+
+    StartDownload(state, info);
+    RunModal(hwnd, owner);
+    return state->started;
 }
 
 } // namespace ui

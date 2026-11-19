@@ -15,6 +15,10 @@ struct Settings {
     std::wstring backupDir;       // empty = %LOCALAPPDATA%\DRBackupCreator
     std::wstring scheduleTime = L"21:00";
     bool         scheduleEnabled = false;
+
+    bool         updateAuto = true;     // check GitHub once a day
+    long long    updateLastCheck = 0;   // unix seconds
+    std::wstring updateSkipped;         // "2.2.0" the user asked to skip
 };
 
 Settings Load();
@@ -22,6 +26,9 @@ Settings Load();
 void SaveThemePath(const std::wstring& path);
 void SaveBackupDir(const std::wstring& path);
 void SaveSchedule(bool enabled, const std::wstring& time);
+void SaveUpdateAuto(bool enabled);
+void SaveUpdateLastCheck(long long unixTime);
+void SaveUpdateSkipped(const std::wstring& version);
 
 // Reads settings.ini and returns the palette to use. Never fails: a missing or
 // broken theme file falls back to the built-in one.

@@ -109,6 +109,25 @@ struct Strings {
     const wchar_t* filterAll;
     const wchar_t* scheduleError;    // %s
     const wchar_t* themeError;       // %s
+
+    // Updates
+    const wchar_t* updateSection;
+    const wchar_t* updateAutoOn;
+    const wchar_t* updateAutoOff;
+    const wchar_t* btnCheckNow;
+    const wchar_t* updateChecking;
+    const wchar_t* updateUpToDate;   // %s
+    const wchar_t* updateFailed;     // %s
+    const wchar_t* updateTitle;
+    const wchar_t* updateSubtitle;   // %s (current), %s (latest)
+    const wchar_t* btnInstallUpdate;
+    const wchar_t* btnLater;
+    const wchar_t* btnSkipVersion;
+    const wchar_t* downloadTitle;
+    const wchar_t* downloadText;     // %s
+    const wchar_t* downloadFailed;   // %s
+    const wchar_t* updateNoNotes;
+    const wchar_t* updateReleasePage;
 };
 
 Lang GetLang();

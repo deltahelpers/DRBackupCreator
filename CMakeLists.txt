@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(DRBackupCreator VERSION 2.1.0 LANGUAGES CXX RC)
+project(DRBackupCreator VERSION 2.2.0 LANGUAGES CXX RC)
 
 # CI can stamp a release version without editing this file:
 #   cmake -B build -DDRBC_RELEASE_VERSION=2.0.0
@@ -64,8 +64,11 @@ add_executable(drbc WIN32
     src/config.cpp
     src/schedule.cpp
     src/settings.cpp
+    src/update.cpp
+    src/update_parse.cpp
     src/ui/gui.cpp
     src/ui/dialogs.cpp
+    src/ui/update_ui.cpp
     src/ui/theme.cpp
     src/ui/i18n.cpp
     ${DRBC_GEN_DIR}/app.rc
@@ -87,6 +90,8 @@ target_link_libraries(drbc PRIVATE
     uxtheme
     ole32
     shlwapi
+    winhttp
+    bcrypt
 )
 
 if(MINGW)
@@ -124,6 +129,17 @@ add_test(NAME drbc_config COMMAND drbc_config_tests)
 
 if(MINGW)
     target_link_options(drbc_config_tests PRIVATE -static)
+endif()
+
+# Update checker: version compare, release JSON and the notes cleaner.
+add_executable(drbc_update_tests tests/update_tests.cpp src/update_parse.cpp)
+target_include_directories(drbc_update_tests PRIVATE src)
+target_compile_definitions(drbc_update_tests PRIVATE
+    UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00 WINVER=0x0A00)
+add_test(NAME drbc_update COMMAND drbc_update_tests)
+
+if(MINGW)
+    target_link_options(drbc_update_tests PRIVATE -static)
 endif()
 
 # ---------------------------------------------------------------------------

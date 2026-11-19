@@ -197,6 +197,8 @@ Notes:
   `drbc.exe --export-config my.bcconfig`. The exported file is a good starting
   point.
 
+---
+
 ### 3.3 Where the app keeps the schedule
 
 ```
@@ -217,6 +219,22 @@ creates a backup and writes one line to
 2026-11-19 21:30:01 skipped - DELTARUNE is running
 ```
 
+### 3.4 Where the app keeps update settings
+
+```
+%LOCALAPPDATA%\DRBackupCreator\settings.ini
+
+[update]
+auto=1
+last_check=1763500000
+skipped=
+```
+
+`auto=0` turns the automatic check off, `last_check` is a Unix timestamp
+(seconds) and the check runs when it is older than 24 hours. `skipped` holds one
+version the user asked to hide. Missing keys mean "check automatically, nothing
+skipped".
+
 ---
 
 ## 4. Command line
@@ -228,6 +246,8 @@ drbc.exe --export-config <file>     Write the current settings
 drbc.exe --schedule 21:30           Create the daily backup task
 drbc.exe --schedule off             Remove it
 drbc.exe --auto-backup              What the task runs (no window)
+drbc.exe --check-updates            Print the latest release (exit 1 on error)
+drbc.exe --download-update <dir>    Download + verify the installer in <dir>
 ```
 
 Double-clicking a `.bctheme` or `.bcconfig` does the same thing from Explorer:
@@ -263,4 +283,9 @@ the file is applied and the main window opens.
 - El backup diario usa el **Programador de tareas de Windows**
   (`DRBackupCreator Auto Backup`) y funciona con la app cerrada, siempre que tu
   usuario tenga la sesión iniciada.
+- Las **actualizaciones** se comprueban como mucho una vez al día en GitHub
+  (`[update]` en `settings.ini`). Nunca se instalan solas: la ventana enseña la
+  versión nueva y los cambios, y tú eliges entre **Instalar**, **Más tarde** o
+  **Saltar esta versión**. También puedes comprobarlo a mano en **Ajustes →
+  Actualizaciones** o con `drbc.exe --check-updates`.
 - Si algo está mal escrito, el mensaje dice el número de línea.

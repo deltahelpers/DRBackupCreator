@@ -105,9 +105,32 @@ drbc.exe --export-config <file>   Saves the current settings
 drbc.exe --schedule 21:30         Backs up every day at that time
 drbc.exe --schedule off           Turns the daily backup off
 drbc.exe --auto-backup            Silent backup (used by the schedule)
+drbc.exe --check-updates          Asks GitHub for the latest version
+drbc.exe --download-update <dir>  Downloads and verifies the installer
 drbc.exe --help                   Help
 drbc.exe --version                Version
 ```
+
+### ⬆️ Updates
+
+The app checks GitHub for a newer release once a day, and only when it is
+allowed to (see **Settings → Updates**). Nothing is installed by itself:
+
+1. It compares the release tag with its own version.
+2. When the release is newer, a window shows the changelog and the two version
+   numbers.
+3. **Install update** downloads `drbcWindowsInstaller.exe`, checks its SHA-256
+   against the digest GitHub publishes, closes the app and starts the installer.
+   **Later** closes the window; **Skip this version** also hides that exact
+   version until a newer one appears.
+
+The installer is the same one on the releases page, so MSI installations are
+replaced by a normal Inno install (Program Files → administrator prompt) and
+per-user installations are upgraded silently. The app comes back when the
+installer finishes.
+
+The check needs no account and sends nothing but the request. Turn it off in
+**Settings → Updates** (the choice is remembered in `settings.ini`).
 
 ### ⏰ Daily backup
 
