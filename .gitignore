@@ -15,3 +15,8 @@ CPackConfig.cmake
 CPackSourceConfig.cmake
 CTestTestfile.cmake
 Testing/
+**/obj/
+**/bin/
+.vs/
+*.user
+*.suo

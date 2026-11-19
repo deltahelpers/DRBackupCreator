@@ -17,11 +17,11 @@ if (-not $NoBuild) {
     if ($LASTEXITCODE -ne 0) { throw "Build failed (exit code $LASTEXITCODE)" }
 }
 
-# Default to the version declared in CMakeLists.txt so local builds stay in sync.
+# Default to the version declared in the .NET project.
 if (-not $Version) {
-    $cmake = Get-Content (Join-Path $root "CMakeLists.txt") -Raw
-    $m = [regex]::Match($cmake, 'project\s*\(\s*DRBackupCreator\s+VERSION\s+([0-9]+(?:\.[0-9]+)*)')
-    if (-not $m.Success) { throw "Could not read the project version from CMakeLists.txt; pass -Version." }
+    $project = Get-Content (Join-Path $root "dotnet\DRBackupCreator.csproj") -Raw
+    $m = [regex]::Match($project, '<Version>([^<]+)</Version>')
+    if (-not $m.Success) { throw "Could not read the project version from the .NET project; pass -Version." }
     $Version = $m.Groups[1].Value
 }
 

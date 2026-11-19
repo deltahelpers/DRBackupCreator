@@ -15,7 +15,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <?ifndef Version?>
-  <?define Version = "2.1.0"?>
+  <?define Version = "2.2.0"?>
   <?endif?>
 
   <Package Name="DRBackupCreator"
@@ -76,6 +76,7 @@
                     WorkingDirectory="INSTALLFOLDER"
                     Icon="AppIcon" />
         </File>
+        <File Id="drbcConfig" Source="$(var.Root)\build\bin\drbc.exe.config" />
 
         <!--
           Document types. The package is per-user, so these land in
@@ -103,10 +104,6 @@
                   TargetFile="drbcExe" />
           </Extension>
         </ProgId>
-      </Component>
-
-      <Component Id="CoreLibrary" Guid="A1B2C3D4-2222-4E5F-9A0B-1C2D3E4F5A62">
-        <File Id="coreDll" Source="$(var.Root)\build\bin\DRBackupCCore.dll" KeyPath="yes" />
       </Component>
 
       <Component Id="Documentation" Guid="A1B2C3D4-3333-4E5F-9A0B-1C2D3E4F5A63">
